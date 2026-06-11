@@ -8,6 +8,7 @@ import { createRelayRuntime, type RelayRuntime } from "../../relay/src/server.js
 import {
   createAgentShellRuntime,
   type AgentShellEvent,
+  type AgentShellRuntimeOptions,
   type AgentShellRuntime,
   type HostDecision
 } from "./runtime.js";
@@ -35,18 +36,67 @@ afterEach(async () => {
 describe("agent shell consent workflow", () => {
   it("rejects malformed runtime host decisions before relay startup", () => {
     expect(() =>
-      createAgentShellRuntime({
-        role: "host",
-        relayUrl: "ws://127.0.0.1:9",
-        sessionId: "session-demo",
-        pairingCode: "123-456",
-        peerId: "host-1",
-        displayName: "Host",
-        deviceId: "dev_host_1",
+      createAgentShellRuntime(createRuntimeOptions({
         hostDecision: "approve-later" as HostDecision,
         logger: silentLogger
-      })
+      }))
     ).toThrow("Host decision must be one of: none, approve, deny");
+  });
+
+  it("rejects malformed direct runtime options before relay startup", () => {
+    const cases: Array<[string, Partial<AgentShellRuntimeOptions>, string]> = [
+      [
+        "non-websocket relay URL",
+        { relayUrl: "http://127.0.0.1:8787" },
+        "Runtime relay URL"
+      ],
+      ["malformed role", { role: "controller" as AgentShellRuntimeOptions["role"] }, "Runtime role"],
+      ["malformed session id", { sessionId: "session demo" }, "Runtime protocol identifiers"],
+      ["malformed pairing code", { pairingCode: "secret" }, "Runtime protocol identifiers"],
+      ["malformed peer id", { peerId: "host/1" }, "Runtime protocol identifiers"],
+      ["malformed device id", { deviceId: "dev1" }, "Runtime protocol identifiers"],
+      ["blank display name", { displayName: "   " }, "Runtime display name"],
+      ["blank token", { token: "   " }, "Runtime token"],
+      [
+        "invalid requested permission",
+        { requestedPermissions: ["input:keylogger" as Permission] },
+        "Runtime requested permissions"
+      ],
+      [
+        "duplicate requested permission",
+        { requestedPermissions: ["screen:view", "screen:view"] },
+        "Runtime requested permissions"
+      ],
+      [
+        "oversized requested permissions",
+        { requestedPermissions: new Array<Permission>(17).fill("screen:view") },
+        "Runtime requested permissions"
+      ],
+      [
+        "invalid revoke permission",
+        { hostRevokePermission: "input:keylogger" as Permission },
+        "Runtime revoke permission"
+      ],
+      [
+        "non-boolean visible state",
+        { visibleToHost: "false" as unknown as boolean },
+        "Runtime visibleToHost"
+      ],
+      ["unsafe workflow timer", { hostPauseAfterMs: 2_147_483_648 }, "Runtime workflow timer"],
+      ["blank decision reason", { decisionReason: "   " }, "Runtime workflow reasons"],
+      [
+        "oversized lifecycle reason",
+        { hostTerminateReason: "x".repeat(241) },
+        "Runtime workflow reasons"
+      ]
+    ];
+
+    for (const [name, overrides, expectedMessage] of cases) {
+      expect(
+        () => createAgentShellRuntime(createRuntimeOptions(overrides)),
+        name
+      ).toThrow(expectedMessage);
+    }
   });
 
   it("sends viewer authorization requests through the relay to the host", async () => {
@@ -1166,6 +1216,21 @@ describe("agent shell consent workflow", () => {
     expect(logOutput).not.toContain("Message session does not match registered peer");
   });
 });
+
+function createRuntimeOptions(
+  overrides: Partial<AgentShellRuntimeOptions> = {}
+): AgentShellRuntimeOptions {
+  return {
+    role: "host",
+    relayUrl: "ws://127.0.0.1:9",
+    sessionId: "session-demo",
+    pairingCode: "123-456",
+    peerId: "host-1",
+    displayName: "Host",
+    deviceId: "dev_host_1",
+    ...overrides
+  };
+}
 
 async function startRelayAndHost(options: {
   authorizationTtlMs?: number;

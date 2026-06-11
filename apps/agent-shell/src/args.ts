@@ -8,7 +8,12 @@ import {
   type Permission,
   type SessionRole
 } from "@winbridge/protocol";
-import { parsePermissions, type HostDecision } from "./runtime.js";
+import {
+  MAX_AGENT_SHELL_REASON_LENGTH,
+  MAX_AGENT_SHELL_TIMER_DELAY_MS,
+  parsePermissions,
+  type HostDecision
+} from "./runtime.js";
 
 export type AgentShellArgs = {
   role: SessionRole;
@@ -61,9 +66,6 @@ const knownOptions = new Set([
   "terminate-after-ms",
   "terminate-reason"
 ]);
-const MAX_CLI_REASON_LENGTH = 240;
-const MAX_AGENT_SHELL_TIMER_DELAY_MS = 2_147_483_647;
-
 export class AgentShellUsageError extends Error {
   constructor() {
     super(AGENT_SHELL_USAGE);
@@ -250,7 +252,7 @@ function parseOptionalReason(raw: string | undefined): string | undefined {
     return undefined;
   }
 
-  if (raw.trim().length === 0 || raw.length > MAX_CLI_REASON_LENGTH) {
+  if (raw.trim().length === 0 || raw.length > MAX_AGENT_SHELL_REASON_LENGTH) {
     throw new AgentShellUsageError();
   }
 

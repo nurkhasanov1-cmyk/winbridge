@@ -5,9 +5,13 @@ import {
   createDeviceIdentity,
   createMessageBase,
   decodeProtocolEnvelope,
+  DeviceIdentitySchema,
   encodeProtocolEnvelope,
   PairingCodeSchema,
+  PeerIdSchema,
   PermissionSchema,
+  SessionIdSchema,
+  SessionRoleSchema,
   type AuditOutcome,
   type Permission,
   type ProtocolEnvelope,
@@ -60,7 +64,22 @@ export type AgentShellRuntime = {
   send(message: ProtocolEnvelope): void;
 };
 
+export const MAX_AGENT_SHELL_REASON_LENGTH = 240;
+export const MAX_AGENT_SHELL_TIMER_DELAY_MS = 2_147_483_647;
+
 const HOST_DECISION_ERROR_MESSAGE = "Host decision must be one of: none, approve, deny";
+const RUNTIME_DISPLAY_NAME_ERROR_MESSAGE = "Runtime display name must be non-blank and 120 characters or less";
+const RUNTIME_IDENTIFIER_ERROR_MESSAGE = "Runtime protocol identifiers are invalid";
+const RUNTIME_PERMISSION_ERROR_MESSAGE = "Runtime requested permissions must be valid and unique";
+const RUNTIME_RELAY_URL_ERROR_MESSAGE = "Runtime relay URL must be an absolute ws or wss URL";
+const RUNTIME_REVOKE_PERMISSION_ERROR_MESSAGE = "Runtime revoke permission must be valid";
+const RUNTIME_ROLE_ERROR_MESSAGE = "Runtime role must be host or viewer";
+const RUNTIME_TOKEN_ERROR_MESSAGE = "Runtime token must not be blank";
+const RUNTIME_VISIBLE_SESSION_ERROR_MESSAGE = "Runtime visibleToHost must be a boolean when provided";
+const RUNTIME_WORKFLOW_REASON_ERROR_MESSAGE =
+  "Runtime workflow reasons must be non-blank and 240 characters or less";
+const RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE =
+  "Runtime workflow timer delays must be integers from 0 through 2147483647";
 const VALID_HOST_DECISIONS = new Set(["none", "approve", "deny"]);
 
 type HostWorkflowState = {
@@ -74,10 +93,9 @@ type AgentShellSessionState = {
 };
 
 export function createAgentShellRuntime(options: AgentShellRuntimeOptions): AgentShellRuntime {
-  assertValidHostDecision(options.hostDecision);
+  const relayUrl = validateRuntimeOptions(options);
 
   const logger = options.logger ?? console;
-  const relayUrl = new URL(options.relayUrl);
   let socket: WebSocket | undefined;
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const sessionState: AgentShellSessionState = {
@@ -367,6 +385,169 @@ function assertValidHostDecision(value: unknown): asserts value is HostDecision 
   }
 
   throw new Error(HOST_DECISION_ERROR_MESSAGE);
+}
+
+function validateRuntimeOptions(options: AgentShellRuntimeOptions): URL {
+  const relayUrl = parseRuntimeRelayUrl(options.relayUrl);
+
+  assertRuntimeRole(options.role);
+  assertRuntimeIdentifiers(options);
+  assertRuntimeDisplayName(options.displayName);
+  assertRuntimeToken(options.token);
+  assertRuntimeRequestedPermissions(options.requestedPermissions);
+  assertRuntimeRevokePermission(options.hostRevokePermission);
+  assertRuntimeVisibleToHost(options.visibleToHost);
+  assertValidHostDecision(options.hostDecision);
+  assertRuntimeWorkflowTimers([
+    options.authorizationTtlMs,
+    options.hostRevokeAfterMs,
+    options.hostPauseAfterMs,
+    options.hostResumeAfterMs,
+    options.hostTerminateAfterMs
+  ]);
+  assertRuntimeWorkflowReasons([
+    options.decisionReason,
+    options.hostRevokeReason,
+    options.hostPauseReason,
+    options.hostResumeReason,
+    options.hostTerminateReason
+  ]);
+
+  return relayUrl;
+}
+
+function parseRuntimeRelayUrl(value: unknown): URL {
+  if (typeof value !== "string") {
+    throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
+  }
+
+  let relayUrl: URL;
+  try {
+    relayUrl = new URL(value);
+  } catch {
+    throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
+  }
+
+  if (relayUrl.protocol !== "ws:" && relayUrl.protocol !== "wss:") {
+    throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
+  }
+
+  return relayUrl;
+}
+
+function assertRuntimeRole(value: unknown): asserts value is SessionRole {
+  try {
+    SessionRoleSchema.parse(value);
+  } catch {
+    throw new Error(RUNTIME_ROLE_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeIdentifiers(options: AgentShellRuntimeOptions): void {
+  try {
+    SessionIdSchema.parse(options.sessionId);
+    PairingCodeSchema.parse(options.pairingCode);
+    PeerIdSchema.parse(options.peerId);
+    DeviceIdentitySchema.shape.deviceId.parse(options.deviceId);
+  } catch {
+    throw new Error(RUNTIME_IDENTIFIER_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeDisplayName(value: unknown): asserts value is string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(RUNTIME_DISPLAY_NAME_ERROR_MESSAGE);
+  }
+
+  try {
+    DeviceIdentitySchema.shape.displayName.parse(value);
+  } catch {
+    throw new Error(RUNTIME_DISPLAY_NAME_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeToken(value: unknown): asserts value is string | undefined {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(RUNTIME_TOKEN_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeRequestedPermissions(value: unknown): asserts value is Permission[] | undefined {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value) || value.length > 16) {
+    throw new Error(RUNTIME_PERMISSION_ERROR_MESSAGE);
+  }
+
+  try {
+    for (const permission of value) {
+      PermissionSchema.parse(permission);
+    }
+  } catch {
+    throw new Error(RUNTIME_PERMISSION_ERROR_MESSAGE);
+  }
+
+  if (new Set(value).size !== value.length) {
+    throw new Error(RUNTIME_PERMISSION_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeRevokePermission(value: unknown): asserts value is Permission | undefined {
+  if (value === undefined) {
+    return;
+  }
+
+  try {
+    PermissionSchema.parse(value);
+  } catch {
+    throw new Error(RUNTIME_REVOKE_PERMISSION_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeVisibleToHost(value: unknown): asserts value is boolean | undefined {
+  if (value === undefined || typeof value === "boolean") {
+    return;
+  }
+
+  throw new Error(RUNTIME_VISIBLE_SESSION_ERROR_MESSAGE);
+}
+
+function assertRuntimeWorkflowTimers(values: unknown[]): void {
+  for (const value of values) {
+    if (value === undefined) {
+      continue;
+    }
+
+    if (
+      !Number.isInteger(value) ||
+      (value as number) < 0 ||
+      (value as number) > MAX_AGENT_SHELL_TIMER_DELAY_MS
+    ) {
+      throw new Error(RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE);
+    }
+  }
+}
+
+function assertRuntimeWorkflowReasons(values: unknown[]): void {
+  for (const value of values) {
+    if (value === undefined) {
+      continue;
+    }
+
+    if (
+      typeof value !== "string" ||
+      value.trim().length === 0 ||
+      value.length > MAX_AGENT_SHELL_REASON_LENGTH
+    ) {
+      throw new Error(RUNTIME_WORKFLOW_REASON_ERROR_MESSAGE);
+    }
+  }
 }
 
 function scheduleHostRevoke(

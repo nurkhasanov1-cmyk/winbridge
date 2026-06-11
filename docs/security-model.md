@@ -83,7 +83,7 @@ The non-native agent shell can simulate consent messages for development:
 - Host approval requires `--host-decision approve`.
 - Active session state is withheld unless `--visible-session true` is set.
 - CLI parsing rejects unknown, duplicate option, duplicate requested permission, missing-value, blank token, malformed relay URL, malformed protocol identifier, malformed display name, malformed permission, malformed pairing, malformed lifecycle reason, and non-`true`/`false` `--visible-session` values before starting the runtime.
-- The managed runtime rejects malformed direct `hostDecision` values before opening a relay connection or sending any authorization decision.
+- The managed runtime rejects malformed direct options for relay URL, identifiers, display name, token, requested permissions, revoke permission, visible-session flag, host decision, workflow timers, and decision/lifecycle reasons before opening a relay connection or sending any authorization decision.
 - Authorization expiration simulation uses `--authorization-ttl-ms` and only runs after visible activation.
 - Pause/resume simulation requires explicit visible approval plus `--pause-after-ms` and optional `--resume-after-ms`.
 - Permission revocation simulation requires explicit visible approval plus `--revoke-after-ms` and `--revoke-permission`.
