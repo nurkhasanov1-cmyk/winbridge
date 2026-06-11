@@ -5,7 +5,12 @@ import { FileAuditSink, MemoryAuditSink, type AuditSink } from "@winbridge/audit
 import { createMessageBase, type Permission, type ProtocolEnvelope } from "@winbridge/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { createRelayRuntime, type RelayRuntime } from "../../relay/src/server.js";
-import { createAgentShellRuntime, type AgentShellEvent, type AgentShellRuntime } from "./runtime.js";
+import {
+  createAgentShellRuntime,
+  type AgentShellEvent,
+  type AgentShellRuntime,
+  type HostDecision
+} from "./runtime.js";
 
 type TestLogger = {
   log(message: string): void;
@@ -28,6 +33,22 @@ afterEach(async () => {
 });
 
 describe("agent shell consent workflow", () => {
+  it("rejects malformed runtime host decisions before relay startup", () => {
+    expect(() =>
+      createAgentShellRuntime({
+        role: "host",
+        relayUrl: "ws://127.0.0.1:9",
+        sessionId: "session-demo",
+        pairingCode: "123-456",
+        peerId: "host-1",
+        displayName: "Host",
+        deviceId: "dev_host_1",
+        hostDecision: "approve-later" as HostDecision,
+        logger: silentLogger
+      })
+    ).toThrow("Host decision must be one of: none, approve, deny");
+  });
+
   it("sends viewer authorization requests through the relay to the host", async () => {
     const { relay, hostEvents, viewerEvents } = await startRelayAndHost();
     await startViewer(relay.url(), ["screen:view"], viewerEvents);

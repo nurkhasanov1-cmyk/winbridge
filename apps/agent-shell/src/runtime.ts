@@ -60,6 +60,9 @@ export type AgentShellRuntime = {
   send(message: ProtocolEnvelope): void;
 };
 
+const HOST_DECISION_ERROR_MESSAGE = "Host decision must be one of: none, approve, deny";
+const VALID_HOST_DECISIONS = new Set(["none", "approve", "deny"]);
+
 type HostWorkflowState = {
   terminalStatus?: "revoked" | "terminated" | "expired";
   paused: boolean;
@@ -71,6 +74,8 @@ type AgentShellSessionState = {
 };
 
 export function createAgentShellRuntime(options: AgentShellRuntimeOptions): AgentShellRuntime {
+  assertValidHostDecision(options.hostDecision);
+
   const logger = options.logger ?? console;
   const relayUrl = new URL(options.relayUrl);
   let socket: WebSocket | undefined;
@@ -268,35 +273,39 @@ function handleHostAuthorizationRequest(
     permissions: [...request.requestedPermissions]
   };
 
-  if (decision === "none") {
-    options.logger?.log("[winbridge-agent] authorization request received; no host decision configured");
-    return;
+  switch (decision) {
+    case "none":
+      options.logger?.log("[winbridge-agent] authorization request received; no host decision configured");
+      return;
+    case "deny": {
+      const authorizationId = `authz_${randomUUID()}`;
+      sendProtocol(socket, options, {
+        ...createMessageBase(options.sessionId),
+        type: "session-authorization-decision",
+        authorizationId,
+        hostPeerId: options.peerId,
+        viewerPeerId: request.viewerPeerId,
+        decision: "denied",
+        grantedPermissions: [],
+        reason: options.decisionReason ?? "Host denied"
+      });
+      sendDevelopmentAuditEvent(socket, options, {
+        action: "agent-shell.authorization.denied",
+        outcome: "denied",
+        detail: {
+          requestedPermissionCount: request.requestedPermissions.length,
+          reasonConfigured: Boolean(options.decisionReason)
+        }
+      });
+      return;
+    }
+    case "approve":
+      break;
+    default:
+      throw new Error(HOST_DECISION_ERROR_MESSAGE);
   }
 
   const authorizationId = `authz_${randomUUID()}`;
-
-  if (decision === "deny") {
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-authorization-decision",
-      authorizationId,
-      hostPeerId: options.peerId,
-      viewerPeerId: request.viewerPeerId,
-      decision: "denied",
-      grantedPermissions: [],
-      reason: options.decisionReason ?? "Host denied"
-    });
-    sendDevelopmentAuditEvent(socket, options, {
-      action: "agent-shell.authorization.denied",
-      outcome: "denied",
-      detail: {
-        requestedPermissionCount: request.requestedPermissions.length,
-        reasonConfigured: Boolean(options.decisionReason)
-      }
-    });
-    return;
-  }
-
   const expiresAt = new Date(Date.now() + (options.authorizationTtlMs ?? 10 * 60_000)).toISOString();
 
   sendProtocol(socket, options, {
@@ -346,6 +355,18 @@ function handleHostAuthorizationRequest(
   scheduleHostTerminate(socket, options, request, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   scheduleHostPause(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   scheduleHostExpiration(socket, options, request, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
+}
+
+function assertValidHostDecision(value: unknown): asserts value is HostDecision | undefined {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value === "string" && VALID_HOST_DECISIONS.has(value)) {
+    return;
+  }
+
+  throw new Error(HOST_DECISION_ERROR_MESSAGE);
 }
 
 function scheduleHostRevoke(

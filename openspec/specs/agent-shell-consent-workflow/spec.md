@@ -69,7 +69,7 @@ The viewer shell SHALL send a session authorization request only when requested 
 - **THEN** it sends a `session-authorization-request` message after joining the relay
 
 ### Requirement: Explicit host decision
-The host shell SHALL NOT approve or deny authorization requests unless an explicit host decision is configured.
+The host shell SHALL NOT approve or deny authorization requests unless an explicit valid host decision is configured, and the managed runtime SHALL reject malformed host decision values before starting a relay connection or sending authorization decisions.
 
 #### Scenario: Host decision omitted
 - **WHEN** the host shell receives an authorization request and no host decision is configured
@@ -78,6 +78,10 @@ The host shell SHALL NOT approve or deny authorization requests unless an explic
 #### Scenario: Host approves request
 - **WHEN** the host shell receives an authorization request and is explicitly configured to approve with visible session state
 - **THEN** it sends an approved decision and active visible state update
+
+#### Scenario: Malformed runtime host decision is rejected
+- **WHEN** the managed runtime is configured with a host decision outside `none`, `approve`, or `deny`
+- **THEN** it fails before connecting to the relay or sending any authorization decision
 
 ### Requirement: Visible active state gate
 The host shell MUST NOT emit active session state unless visible session state is explicitly configured.
