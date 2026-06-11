@@ -37,6 +37,10 @@ The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments befo
 - **WHEN** the agent shell is started with an empty, whitespace-only, or oversized `--name` value
 - **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
 
+#### Scenario: Blank token option is rejected
+- **WHEN** the agent shell is started with an empty or whitespace-only `--token` value
+- **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
+
 #### Scenario: Invalid lifecycle reason option is rejected
 - **WHEN** the agent shell is started with a blank or oversized lifecycle reason option
 - **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message

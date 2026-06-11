@@ -63,6 +63,7 @@ npm run dev:relay
 ```
 
 Omit `WINBRIDGE_RELAY_SHARED_TOKEN` for local development mode. Do not set it to an empty or whitespace-only value.
+When a relay shared token is configured, pass the same non-blank value to the agent shell with `--token`.
 
 Configure the local relay port with an exact integer TCP port:
 

@@ -133,6 +133,22 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("parses optional relay tokens", () => {
+    expect(parseArgs(["host"], {}, 42).token).toBeUndefined();
+    expect(parseArgs(["host", "--token", "dev-token"], {}, 42).token).toBe("dev-token");
+    expect(parseArgs(["host", "--token", "  dev-token  "], {}, 42).token).toBe(
+      "  dev-token  "
+    );
+  });
+
+  it("rejects blank relay tokens", () => {
+    for (const token of ["", "   "]) {
+      expect(() => parseArgs(["host", "--token", token], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+    }
+  });
+
   it("parses valid workflow options", () => {
     const args = parseArgs(
       [
