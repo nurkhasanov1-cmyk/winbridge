@@ -56,7 +56,7 @@ Remote assistance authorization is deny-by-default:
 2. `approved`: host consented to scoped permissions; no remote action is allowed until the session is visible.
 3. `active`: host consent and visible host session state are both present; only granted unexpired permissions are allowed.
 4. `paused`: host temporarily paused the visible session; permissions are retained but all remote action checks fail closed until host resume.
-5. `denied`, `revoked`, `terminated`, `expired`: all remote action checks fail closed.
+5. `denied`, `revoked`, `terminated`, `expired`: all remote action checks fail closed and the authorization record carries no permissions.
 
 Pairing is only a prerequisite relationship. It never grants screen viewing, pointer input, keyboard input, clipboard access, file transfer, or diagnostics by itself.
 
@@ -73,6 +73,8 @@ Receiving one of these messages is not enough to perform a sensitive action. Com
 Permission revocation is a host-visible live-session transition. The shared authorization state machine accepts it only for visible, unexpired `active` or `paused` authorizations that currently include the permission. Revocation from pending, approved, denied, revoked, terminated, expired, invisible, or missing-permission states is rejected and must not create or restore access.
 
 Host approval can narrow the viewer's requested permission scope, but it must not expand it. The shared authorization state machine rejects empty approval grants, duplicate grants, and grants for permissions that were not present in the pending viewer request.
+
+Terminal authorization records clear permission scope on denial, final revocation, termination, and expiration so fail-closed states cannot be reused as grant-bearing data by future adapters.
 
 Pending authorization TTL inputs are bounded exact integer milliseconds before a session authorization record is created, preventing invalid or timer-unsafe consent windows.
 

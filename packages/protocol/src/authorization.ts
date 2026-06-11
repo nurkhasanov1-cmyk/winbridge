@@ -15,6 +15,7 @@ export const SessionAuthorizationStatusSchema = z.enum([
 export type SessionAuthorizationStatus = z.infer<typeof SessionAuthorizationStatusSchema>;
 
 const grantBearingStatuses = new Set<SessionAuthorizationStatus>(["pending", "approved", "active", "paused"]);
+const terminalStatuses = new Set<SessionAuthorizationStatus>(["denied", "revoked", "terminated", "expired"]);
 const DEFAULT_AUTHORIZATION_TTL_MS = 30 * 60_000;
 const MAX_AUTHORIZATION_TTL_MS = 2_147_483_647;
 const AuthorizationReasonSchema = z
@@ -57,6 +58,14 @@ export const SessionAuthorizationSchema = SessionAuthorizationBaseSchema.superRe
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: `${authorization.status} session authorization requires at least one permission`,
+      path: ["permissions"]
+    });
+  }
+
+  if (terminalStatuses.has(authorization.status) && authorization.permissions.length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${authorization.status} session authorization cannot carry permissions`,
       path: ["permissions"]
     });
   }
@@ -173,6 +182,7 @@ export function denySessionAuthorization(
   return SessionAuthorizationSchema.parse({
     ...parsed,
     status: "denied",
+    permissions: [],
     reason: input.reason,
     deniedAt: now.toISOString(),
     updatedAt: now.toISOString()
@@ -317,6 +327,7 @@ export function terminateSessionAuthorization(
   return SessionAuthorizationSchema.parse({
     ...parsed,
     status: "terminated",
+    permissions: [],
     terminatedAt: now.toISOString(),
     updatedAt: now.toISOString(),
     reason: input.reason
@@ -336,6 +347,7 @@ export function expireSessionAuthorization(
   return SessionAuthorizationSchema.parse({
     ...parsed,
     status: "expired",
+    permissions: [],
     expiredAt: now.toISOString(),
     updatedAt: now.toISOString(),
     reason: "Authorization expired"

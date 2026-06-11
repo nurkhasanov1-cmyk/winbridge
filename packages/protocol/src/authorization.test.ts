@@ -51,6 +51,7 @@ describe("session authorization state machine", () => {
     });
 
     expect(denied.status).toBe("denied");
+    expect(denied.permissions).toEqual([]);
     expect(denied.deniedAt).toBe(baseTime.toISOString());
     expect(() =>
       assertSessionActionAuthorized({
@@ -252,6 +253,19 @@ describe("session authorization state machine", () => {
       status: "revoked",
       permissions: []
     });
+    for (const status of ["denied", "revoked", "terminated", "expired"] as const) {
+      expect(() =>
+        SessionAuthorizationSchema.parse({
+          ...active,
+          status,
+          deniedAt: status === "denied" ? baseTime.toISOString() : undefined,
+          revokedAt: status === "revoked" ? baseTime.toISOString() : undefined,
+          terminatedAt: status === "terminated" ? baseTime.toISOString() : undefined,
+          expiredAt: status === "expired" ? baseTime.toISOString() : undefined,
+          permissions: ["screen:view"]
+        })
+      ).toThrow("cannot carry permissions");
+    }
   });
 
   it("rejects active or paused authorization records without host visibility", () => {
@@ -621,6 +635,10 @@ describe("session authorization state machine", () => {
       now: baseTime
     });
 
+    expect(terminated).toMatchObject({
+      status: "terminated",
+      permissions: []
+    });
     expect(() =>
       assertSessionActionAuthorized({
         authorization: terminated,
@@ -647,9 +665,11 @@ describe("session authorization state machine", () => {
       { visibleToHost: true, now: baseTime }
     );
     const afterExpiry = new Date("2026-06-11T00:00:01.001Z");
+    const expired = expireSessionAuthorization(active, afterExpiry);
 
-    expect(expireSessionAuthorization(active, afterExpiry).status).toBe("expired");
-    expect(expireSessionAuthorization(active, afterExpiry).expiredAt).toBe(afterExpiry.toISOString());
+    expect(expired.status).toBe("expired");
+    expect(expired.permissions).toEqual([]);
+    expect(expired.expiredAt).toBe(afterExpiry.toISOString());
     expect(() =>
       assertSessionActionAuthorized({
         authorization: active,

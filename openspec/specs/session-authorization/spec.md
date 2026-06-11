@@ -45,7 +45,11 @@ The system SHALL authorize sensitive remote actions only when the session is act
 - **THEN** the system authorizes the action
 
 ### Requirement: Revoke and terminate fail closed
-The system SHALL immediately deny remote action checks after host revocation, permission revocation, expiration, or session termination.
+The system SHALL immediately deny remote action checks after host denial, host revocation, permission revocation, expiration, or session termination. Terminal authorization records with status `denied`, `revoked`, `terminated`, or `expired` MUST NOT carry permissions.
+
+#### Scenario: Request is denied
+- **WHEN** the host denies a pending request
+- **THEN** the authorization is marked `denied`, its permissions are cleared, and remote action checks fail immediately
 
 #### Scenario: Permission is revoked
 - **WHEN** the host revokes a granted permission
@@ -53,7 +57,11 @@ The system SHALL immediately deny remote action checks after host revocation, pe
 
 #### Scenario: Session is terminated
 - **WHEN** the host terminates the session
-- **THEN** all remote action checks fail immediately
+- **THEN** the authorization is marked `terminated`, its permissions are cleared, and all remote action checks fail immediately
+
+#### Scenario: Authorization expires
+- **WHEN** an authorization reaches its expiration time
+- **THEN** the authorization is marked `expired`, its permissions are cleared, and all remote action checks fail immediately
 
 ### Requirement: Host pause and resume lifecycle
 The system SHALL model host pause as a non-terminal authorization state that immediately denies sensitive remote action checks until the host explicitly resumes the visible unexpired authorization.
@@ -139,8 +147,12 @@ The system SHALL reject malformed session authorization records during schema pa
 - **WHEN** a pending, approved, active, or paused authorization record has no permissions
 - **THEN** the schema rejects the record before it can represent a usable remote assistance grant
 
-#### Scenario: Revoked state has no permissions
-- **WHEN** a revoked authorization record has no remaining permissions
+#### Scenario: Terminal state carries permissions
+- **WHEN** a denied, revoked, terminated, or expired authorization record has permissions
+- **THEN** the schema rejects the record so fail-closed states cannot carry usable grant scope
+
+#### Scenario: Terminal state has no permissions
+- **WHEN** a denied, revoked, terminated, or expired authorization record has an empty permission list
 - **THEN** the schema accepts the record as a terminal fail-closed state
 
 #### Scenario: Active authorization is not visible
