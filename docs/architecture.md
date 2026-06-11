@@ -108,6 +108,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode can persist those host-generated workflow audit events to JSONL with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
 - Host mode records `peer-disconnected` as remote peer disconnected state and suppresses later delayed workflow simulation messages for that peer.
 - Received message logs contain summaries only, not raw protocol payloads.
+- CLI argument parsing rejects duplicate requested permissions before sending authorization requests.
 
 This workflow is a protocol simulator, not production host consent UI.
 Development agent-shell audit files are local development persistence, not production audit storage.

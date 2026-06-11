@@ -11,7 +11,7 @@ The agent shell SHALL expose a managed runtime with explicit start and stop oper
 - **THEN** it connects to the relay, sends a join message, and sends hello using the same implementation as the CLI
 
 ### Requirement: Agent shell CLI argument validation
-The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime.
+The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions.
 
 #### Scenario: Unknown CLI option is rejected
 - **WHEN** the agent shell is started with an option name that is not part of the documented CLI
@@ -28,6 +28,10 @@ The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments befo
 #### Scenario: Invalid permission option is rejected
 - **WHEN** the agent shell is started with an invalid requested or revocation permission value
 - **THEN** it exits through bounded usage handling before sending any protocol message
+
+#### Scenario: Duplicate requested permission is rejected
+- **WHEN** the agent shell is started with the same requested permission more than once
+- **THEN** it exits through bounded usage handling before connecting to the relay or sending a session authorization request
 
 #### Scenario: Invalid identifier option is rejected
 - **WHEN** the agent shell is started with a malformed `--session`, `--peer`, or `--device` identifier

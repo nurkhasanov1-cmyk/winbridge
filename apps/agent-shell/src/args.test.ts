@@ -79,6 +79,12 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects duplicate requested permissions", () => {
+    expect(() =>
+      parseArgs(["viewer", "--request", "screen:view,input:pointer,screen:view"], {}, 42)
+    ).toThrow(AgentShellUsageError);
+  });
+
   it("rejects malformed protocol identifier values", () => {
     expect(() => parseArgs(["viewer", "--session", "demo session"], {}, 42)).toThrow(
       AgentShellUsageError
@@ -179,7 +185,7 @@ describe("agent shell arguments", () => {
       [
         "host",
         "--request",
-        "screen:view,input:pointer,screen:view",
+        "screen:view,input:pointer",
         "--host-decision",
         "approve",
         "--visible-session",

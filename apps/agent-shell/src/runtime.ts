@@ -777,8 +777,13 @@ export function parsePermissions(raw: string | undefined): Permission[] {
     return [];
   }
 
-  return raw
+  const permissions = raw
     .split(",")
-    .map((permission) => PermissionSchema.parse(permission.trim()))
-    .filter((permission, index, permissions) => permissions.indexOf(permission) === index);
+    .map((permission) => PermissionSchema.parse(permission.trim()));
+
+  if (new Set(permissions).size !== permissions.length) {
+    throw new Error("Requested permissions must be unique");
+  }
+
+  return permissions;
 }
