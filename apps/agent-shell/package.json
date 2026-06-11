@@ -9,11 +9,11 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
+    "@winbridge/audit-log": "0.1.0",
     "@winbridge/protocol": "0.1.0",
     "ws": "^8.18.2"
   },
   "devDependencies": {
-    "@winbridge/audit-log": "0.1.0",
     "@types/ws": "^8.18.1"
   }
 }

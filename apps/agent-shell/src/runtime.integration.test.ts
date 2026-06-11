@@ -1,4 +1,7 @@
-import { MemoryAuditSink } from "@winbridge/audit-log";
+import { readFileSync, rmSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { FileAuditSink, MemoryAuditSink, type AuditSink } from "@winbridge/audit-log";
 import { createMessageBase, type Permission, type ProtocolEnvelope } from "@winbridge/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { createRelayRuntime, type RelayRuntime } from "../../relay/src/server.js";
@@ -142,6 +145,63 @@ describe("agent shell consent workflow", () => {
     expect(JSON.stringify([approvalAudit, activeAudit])).not.toContain("123-456");
   });
 
+  it("persists host approval and visible activation audit records", async () => {
+    const hostAuditSink = new MemoryAuditSink();
+    const { relay, viewerEvents } = await startRelayAndHost({
+      hostAuditSink,
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const approvalAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.approved"
+    );
+    const activeAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.active"
+    );
+
+    expect(hostAuditSink.records()).toEqual([
+      expect.objectContaining({
+        eventId: approvalAudit.type === "audit-event" ? approvalAudit.eventId : "",
+        actor: {
+          type: "host",
+          id: "host-1",
+          deviceId: "dev_host_1"
+        },
+        sessionId: "session-demo",
+        action: "agent-shell.authorization.approved",
+        outcome: "accepted",
+        detail: {
+          requestedPermissionCount: 1,
+          grantedPermissionCount: 1
+        }
+      }),
+      expect.objectContaining({
+        eventId: activeAudit.type === "audit-event" ? activeAudit.eventId : "",
+        actor: {
+          type: "host",
+          id: "host-1",
+          deviceId: "dev_host_1"
+        },
+        sessionId: "session-demo",
+        action: "agent-shell.authorization.active",
+        outcome: "accepted",
+        detail: {
+          grantedPermissionCount: 1,
+          visibleToHost: true
+        }
+      })
+    ]);
+    expect(JSON.stringify(hostAuditSink.records())).not.toContain("123-456");
+  });
+
   it("sends a secret-safe audit event when host denies authorization", async () => {
     const { relay, viewerEvents } = await startRelayAndHost({
       decisionReason: "private denial reason",
@@ -165,6 +225,50 @@ describe("agent shell consent workflow", () => {
       }
     });
     expect(JSON.stringify(denialAudit)).not.toContain("private denial reason");
+  });
+
+  it("persists host denial audit records without raw private reason text", async () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-agent-audit-"));
+    const auditPath = join(root, "agent-audit.jsonl");
+
+    try {
+      const { relay, viewerEvents } = await startRelayAndHost({
+        decisionReason: "private denial reason",
+        hostAuditSink: new FileAuditSink(auditPath),
+        hostDecision: "deny"
+      });
+      await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+      const denialAudit = await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "audit-event" &&
+          message.action === "agent-shell.authorization.denied"
+      );
+      const lines = readFileSync(auditPath, "utf8").trim().split(/\r?\n/);
+      const persisted = JSON.parse(lines[0] ?? "{}");
+
+      expect(lines).toHaveLength(1);
+      expect(persisted).toMatchObject({
+        eventId: denialAudit.type === "audit-event" ? denialAudit.eventId : "",
+        actor: {
+          type: "host",
+          id: "host-1",
+          deviceId: "dev_host_1"
+        },
+        sessionId: "session-demo",
+        action: "agent-shell.authorization.denied",
+        outcome: "denied",
+        detail: {
+          requestedPermissionCount: 1,
+          reasonConfigured: true
+        }
+      });
+      expect(JSON.stringify(persisted)).not.toContain("private denial reason");
+      expect(JSON.stringify(persisted)).not.toContain("123-456");
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 
   it("sends revoked state after host revokes the only granted permission", async () => {
@@ -489,6 +593,33 @@ describe("agent shell consent workflow", () => {
       }
     });
     expect(JSON.stringify(resumeAudit)).not.toContain("private resume reason");
+  });
+
+  it("persists configured pause and resume lifecycle audit records", async () => {
+    const hostAuditSink = new MemoryAuditSink();
+    const { relay, viewerEvents } = await startRelayAndHost({
+      hostAuditSink,
+      hostDecision: "approve",
+      hostPauseAfterMs: 10,
+      hostResumeAfterMs: 10,
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.resumed"
+    );
+
+    expect(hostAuditSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved",
+      "agent-shell.authorization.active",
+      "agent-shell.authorization.paused",
+      "agent-shell.authorization.resumed"
+    ]);
+    expect(JSON.stringify(hostAuditSink.records())).not.toContain("123-456");
   });
 
   it("does not send pause or resume messages when visible active state is withheld", async () => {
@@ -824,6 +955,107 @@ describe("agent shell consent workflow", () => {
     expect(logOutput).not.toContain("payload");
   });
 
+  it("does not persist arbitrary received protocol payloads through the workflow audit sink", async () => {
+    const viewerAuditSink = new MemoryAuditSink();
+    const { relay, host, viewerEvents } = await startRelayAndHost();
+    await startViewer(relay.url(), [], viewerEvents, silentLogger, viewerAuditSink);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
+    );
+    host.send({
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        token: "secret-token",
+        pairingCode: "123-456",
+        screenData: "raw-screen"
+      }
+    });
+    await waitForMessage(viewerEvents, (message) => message.type === "signal");
+
+    expect(viewerAuditSink.records()).toHaveLength(0);
+  });
+
+  it("surfaces audit sink write failures as runtime errors", async () => {
+    const failingSink: AuditSink = {
+      write: () => {
+        throw new Error("audit sink failed");
+      }
+    };
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostAuditSink: failingSink,
+      hostDecision: "deny"
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-decision" &&
+        message.decision === "denied"
+    );
+    const error = await waitForRuntimeError(hostEvents);
+    await delay(50);
+
+    expect(error.message).toBe("audit sink failed");
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
+          event.message.type === "audit-event" &&
+          event.message.action === "agent-shell.authorization.denied"
+      )
+    ).toBe(false);
+  });
+
+  it("surfaces delayed audit sink write failures as runtime errors", async () => {
+    const backingSink = new MemoryAuditSink();
+    const failingSink: AuditSink = {
+      write: (input) => {
+        if (input.action === "agent-shell.permission.revoked") {
+          throw new Error("delayed audit sink failed");
+        }
+
+        return backingSink.write(input);
+      }
+    };
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostAuditSink: failingSink,
+      hostDecision: "approve",
+      hostRevokeAfterMs: 10,
+      hostRevokePermission: "screen:view",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active"
+    );
+    const error = await waitForRuntimeError(hostEvents);
+    await delay(50);
+
+    expect(error.message).toBe("delayed audit sink failed");
+    expect(backingSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved",
+      "agent-shell.authorization.active"
+    ]);
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
+          event.message.type === "audit-event" &&
+          event.message.action === "agent-shell.permission.revoked"
+      )
+    ).toBe(false);
+  });
+
   it("logs non-protocol message summaries without raw text", async () => {
     const hostLogs: string[] = [];
     const { host, hostEvents } = await startRelayAndHost({
@@ -852,6 +1084,7 @@ describe("agent shell consent workflow", () => {
 async function startRelayAndHost(options: {
   authorizationTtlMs?: number;
   decisionReason?: string;
+  hostAuditSink?: AuditSink;
   hostDecision?: "none" | "approve" | "deny";
   hostLogger?: TestLogger;
   hostPauseAfterMs?: number;
@@ -884,6 +1117,7 @@ async function startRelayAndHost(options: {
     peerId: "host-1",
     displayName: "Host",
     deviceId: "dev_host_1",
+    auditSink: options.hostAuditSink,
     hostDecision: options.hostDecision ?? "none",
     decisionReason: options.decisionReason,
     authorizationTtlMs: options.authorizationTtlMs,
@@ -910,7 +1144,8 @@ async function startViewer(
   relayUrl: string,
   requestedPermissions: Permission[],
   viewerEvents: AgentShellEvent[] = [],
-  logger: TestLogger = silentLogger
+  logger: TestLogger = silentLogger,
+  auditSink?: AuditSink
 ): Promise<AgentShellRuntime> {
   const viewer = createAgentShellRuntime({
     role: "viewer",
@@ -921,6 +1156,7 @@ async function startViewer(
     displayName: "Viewer",
     deviceId: "dev_viewer_1",
     requestedPermissions,
+    auditSink,
     logger,
     onEvent: (event) => viewerEvents.push(event)
   });
@@ -958,6 +1194,21 @@ function waitForRawMessage(events: AgentShellEvent[]): Promise<string> {
         if (match?.direction === "raw") {
           clearInterval(interval);
           resolve(match.text);
+        }
+      }, 5);
+    })
+  );
+}
+
+function waitForRuntimeError(events: AgentShellEvent[]): Promise<Error> {
+  return withTimeout(
+    new Promise((resolve) => {
+      const interval = setInterval(() => {
+        const match = events.find((event) => event.direction === "error");
+
+        if (match?.direction === "error") {
+          clearInterval(interval);
+          resolve(match.error);
         }
       }, 5);
     })

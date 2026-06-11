@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
+import type { AuditSink } from "@winbridge/audit-log";
 import {
   createDeviceIdentity,
   createMessageBase,
@@ -38,6 +39,7 @@ export type AgentShellRuntimeOptions = {
   hostResumeReason?: string;
   hostTerminateAfterMs?: number;
   hostTerminateReason?: string;
+  auditSink?: AuditSink;
   logger?: {
     log(message: string): void;
     error(message: string): void;
@@ -49,6 +51,7 @@ export type AgentShellEvent =
   | { direction: "sent"; message: ProtocolEnvelope }
   | { direction: "received"; message: ProtocolEnvelope }
   | { direction: "raw"; text: string }
+  | { direction: "error"; error: Error }
   | { direction: "closed"; code: number; reason: string };
 
 export type AgentShellRuntime = {
@@ -76,7 +79,11 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
   const scheduleTimer = (callback: () => void, delayMs: number) => {
     const timer = setTimeout(() => {
       timers.delete(timer);
-      callback();
+      try {
+        callback();
+      } catch (error) {
+        reportRuntimeError(options, error);
+      }
     }, delayMs);
     timers.add(timer);
   };
@@ -167,11 +174,20 @@ function handleMessage(
   options: AgentShellRuntimeOptions,
   scheduleTimer: (callback: () => void, delayMs: number) => void
 ): void {
-  try {
-    const envelope = decodeProtocolEnvelope(text);
-    options.onEvent?.({ direction: "received", message: envelope });
-    options.logger?.log(`[winbridge-agent] ${summarizeProtocolMessage(envelope)}`);
+  let envelope: ProtocolEnvelope;
 
+  try {
+    envelope = decodeProtocolEnvelope(text);
+  } catch {
+    options.onEvent?.({ direction: "raw", text });
+    options.logger?.log(`[winbridge-agent] received non-protocol message bytes=${Buffer.byteLength(text)}`);
+    return;
+  }
+
+  options.onEvent?.({ direction: "received", message: envelope });
+  options.logger?.log(`[winbridge-agent] ${summarizeProtocolMessage(envelope)}`);
+
+  try {
     if (envelope.type === "relay-ready" && options.role === "viewer") {
       sendViewerAuthorizationRequest(socket, options);
     }
@@ -179,9 +195,8 @@ function handleMessage(
     if (envelope.type === "session-authorization-request" && options.role === "host") {
       handleHostAuthorizationRequest(socket, options, envelope, scheduleTimer);
     }
-  } catch {
-    options.onEvent?.({ direction: "raw", text });
-    options.logger?.log(`[winbridge-agent] received non-protocol message bytes=${Buffer.byteLength(text)}`);
+  } catch (error) {
+    reportRuntimeError(options, error);
   }
 }
 
@@ -655,15 +670,35 @@ function sendDevelopmentAuditEvent(
     detail: Record<string, unknown>;
   }
 ): void {
+  const eventId = `audit_${randomUUID()}`;
+  options.auditSink?.write({
+    eventId,
+    actor: {
+      type: options.role,
+      id: options.peerId,
+      deviceId: options.deviceId
+    },
+    sessionId: options.sessionId,
+    action: input.action,
+    outcome: input.outcome,
+    detail: input.detail
+  });
+
   sendProtocol(socket, options, {
     ...createMessageBase(options.sessionId),
     type: "audit-event",
-    eventId: `audit_${randomUUID()}`,
+    eventId,
     actorPeerId: options.peerId,
     action: input.action,
     outcome: input.outcome,
     detail: input.detail
   });
+}
+
+function reportRuntimeError(options: AgentShellRuntimeOptions, error: unknown): void {
+  const runtimeError = error instanceof Error ? error : new Error("Agent shell runtime error");
+  options.onEvent?.({ direction: "error", error: runtimeError });
+  options.logger?.error(`[winbridge-agent] runtime error ${runtimeError.message}`);
 }
 
 function hasAuthorizationExpired(expiresAt: string): boolean {

@@ -98,6 +98,15 @@ npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:vi
 
 This still does not capture the screen or send input. It only sends session authorization protocol messages.
 
+Persist development host workflow audit records as JSONL:
+
+```powershell
+$env:WINBRIDGE_AGENT_AUDIT_LOG_PATH = "logs\\agent-audit.jsonl"
+npm run dev:agent -- host --session demo --pairing 123-456 --host-decision approve --visible-session true
+```
+
+The same path can be passed with `--audit-log logs\\agent-audit.jsonl`. Agent audit files record only secret-safe workflow audit metadata; they do not store raw protocol payloads, screen contents, input, or private reason text.
+
 Use a short development authorization TTL:
 
 ```powershell

@@ -1,3 +1,4 @@
+import { FileAuditSink } from "@winbridge/audit-log";
 import { PairingCodeSchema, PermissionSchema, type Permission, type SessionRole } from "@winbridge/protocol";
 import { createAgentShellRuntime, parsePermissions, type HostDecision } from "./runtime.js";
 
@@ -10,6 +11,7 @@ type Args = {
   displayName: string;
   token?: string;
   deviceId: string;
+  auditLogPath?: string;
   requestedPermissions: ReturnType<typeof parsePermissions>;
   hostDecision: HostDecision;
   visibleToHost: boolean;
@@ -26,7 +28,10 @@ type Args = {
 };
 
 const args = parseArgs(process.argv.slice(2));
-const runtime = createAgentShellRuntime(args);
+const runtime = createAgentShellRuntime({
+  ...args,
+  auditSink: args.auditLogPath ? new FileAuditSink(args.auditLogPath) : undefined
+});
 
 const shutdown = async () => {
   await runtime.stop();
@@ -88,6 +93,7 @@ function parseArgs(raw: string[]): Args {
     displayName: options.get("name") ?? `${role} ${process.pid}`,
     token: options.get("token"),
     deviceId: options.get("device") ?? `dev_${role}_${process.pid}`,
+    auditLogPath: options.get("audit-log") ?? process.env.WINBRIDGE_AGENT_AUDIT_LOG_PATH,
     requestedPermissions: parsePermissions(options.get("request")),
     hostDecision: parseHostDecision(options.get("host-decision")),
     visibleToHost: options.get("visible-session") === "true",
@@ -140,7 +146,7 @@ function parseOptionalNonNegativeInteger(raw: string | undefined): number | unde
 
 function printUsageAndExit(): never {
   console.error(
-    "Usage: npm run dev:agent -- <host|viewer> [--relay ws://localhost:8787] [--session demo] [--pairing 123-456] [--peer peer-id] [--device device-id] [--name display-name] [--token token] [--request screen:view,input:pointer] [--host-decision none|approve|deny] [--visible-session true|false] [--authorization-ttl-ms 600000] [--revoke-after-ms 1000] [--revoke-permission screen:view] [--revoke-reason reason] [--pause-after-ms 1000] [--pause-reason reason] [--resume-after-ms 1000] [--resume-reason reason] [--terminate-after-ms 1000] [--terminate-reason reason]"
+    "Usage: npm run dev:agent -- <host|viewer> [--relay ws://localhost:8787] [--session demo] [--pairing 123-456] [--peer peer-id] [--device device-id] [--name display-name] [--token token] [--audit-log logs\\agent-audit.jsonl] [--request screen:view,input:pointer] [--host-decision none|approve|deny] [--visible-session true|false] [--authorization-ttl-ms 600000] [--revoke-after-ms 1000] [--revoke-permission screen:view] [--revoke-reason reason] [--pause-after-ms 1000] [--pause-reason reason] [--resume-after-ms 1000] [--resume-reason reason] [--terminate-after-ms 1000] [--terminate-reason reason]"
   );
   process.exit(1);
 }

@@ -76,6 +76,7 @@ The non-native agent shell can simulate consent messages for development:
 - Permission revocation simulation requires explicit visible approval plus `--revoke-after-ms` and `--revoke-permission`.
 - Session termination simulation requires explicit visible approval plus `--terminate-after-ms`.
 - Development `audit-event` messages are emitted for host decisions, visible activation, revocation, termination, expiration, pause, and resume using secret-safe metadata only.
+- Host workflow audit records can be persisted locally with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
 - Received message logs use summaries and must not contain raw protocol payloads or raw non-protocol message text.
 
 The shell never captures the screen, injects input, syncs clipboard, transfers files, installs services, or enables unattended access.
@@ -129,9 +130,13 @@ This is not production liveness management. Production relay design must cover d
 
 The relay can write local development audit records to JSONL when `WINBRIDGE_RELAY_AUDIT_LOG_PATH` is configured.
 
+The agent shell can write local host workflow audit records to JSONL when `WINBRIDGE_AGENT_AUDIT_LOG_PATH` or `--audit-log` is configured.
+
 File audit records use the same schema validation and redaction as memory and console sinks. Write failures are surfaced to the caller instead of silently dropping records.
 
 Development audit files must not contain raw tokens, raw pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets.
+
+Agent shell audit files must not persist arbitrary received protocol payloads, raw display names, signal payloads, raw private reason text, screen contents, or input contents.
 
 ## Review Gates
 

@@ -93,10 +93,11 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode can simulate authorization expiration after visible activation with `--authorization-ttl-ms`.
 - Host mode can simulate pause/resume only after explicit visible approval with `--pause-after-ms` and optional `--resume-after-ms`.
 - Host mode emits development `audit-event` protocol messages for decision, activation, revocation, termination, expiration, pause, and resume workflow events.
+- Host mode can persist those host-generated workflow audit events to JSONL with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
 - Received message logs contain summaries only, not raw protocol payloads.
 
 This workflow is a protocol simulator, not production host consent UI.
-Development `audit-event` messages are not durable audit persistence.
+Development agent-shell audit files are local development persistence, not production audit storage.
 
 ## Future Windows Architecture
 
