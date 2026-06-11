@@ -55,7 +55,7 @@ export type AgentShellRuntimeOptions = {
 export type AgentShellEvent =
   | { direction: "sent"; message: AgentShellSentProtocolEnvelope }
   | { direction: "received"; message: ProtocolEnvelope }
-  | { direction: "raw"; text: string }
+  | { direction: "raw"; text: typeof REDACTED_EVENT_VALUE; byteLength: number }
   | { direction: "error"; error: Error }
   | { direction: "closed"; code: number; reason: string };
 
@@ -218,8 +218,9 @@ function handleMessage(
   try {
     envelope = decodeProtocolEnvelope(text);
   } catch {
-    options.onEvent?.({ direction: "raw", text });
-    options.logger?.log(`[winbridge-agent] received non-protocol message bytes=${Buffer.byteLength(text)}`);
+    const byteLength = Buffer.byteLength(text);
+    options.onEvent?.({ direction: "raw", text: REDACTED_EVENT_VALUE, byteLength });
+    options.logger?.log(`[winbridge-agent] received non-protocol message bytes=${byteLength}`);
     return;
   }
 

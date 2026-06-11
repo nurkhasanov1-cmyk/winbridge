@@ -1291,13 +1291,22 @@ describe("agent shell consent workflow", () => {
       fromPeerId: "host-1",
       payload: { kind: "offer", sdp: "do-not-log" }
     });
-    await waitForRawMessage(hostEvents);
+    const rawEvent = await waitForRawEvent(hostEvents);
 
     const logOutput = hostLogs.join("\n");
     expect(logOutput).toContain("received non-protocol message bytes=");
     expect(logOutput).not.toContain("do-not-log");
     expect(logOutput).not.toContain("relay-error");
     expect(logOutput).not.toContain("Message session does not match registered peer");
+    expect(rawEvent).toMatchObject({
+      direction: "raw",
+      text: "[REDACTED]",
+      byteLength: expect.any(Number)
+    });
+    expect(rawEvent.byteLength).toBeGreaterThan(0);
+    expect(JSON.stringify(rawEvent)).not.toContain("do-not-log");
+    expect(JSON.stringify(rawEvent)).not.toContain("relay-error");
+    expect(JSON.stringify(rawEvent)).not.toContain("Message session does not match registered peer");
   });
 });
 
@@ -1420,7 +1429,9 @@ function waitForMessage(
   );
 }
 
-function waitForRawMessage(events: AgentShellEvent[]): Promise<string> {
+function waitForRawEvent(
+  events: AgentShellEvent[]
+): Promise<Extract<AgentShellEvent, { direction: "raw" }>> {
   return withTimeout(
     new Promise((resolve) => {
       const interval = setInterval(() => {
@@ -1428,7 +1439,7 @@ function waitForRawMessage(events: AgentShellEvent[]): Promise<string> {
 
         if (match?.direction === "raw") {
           clearInterval(interval);
-          resolve(match.text);
+          resolve(match);
         }
       }, 5);
     })

@@ -60,6 +60,17 @@ The agent shell SHALL emit local `sent` runtime events using a validated and red
 - **WHEN** the managed runtime is asked to send a malformed protocol message
 - **THEN** it rejects the send before emitting a local `sent` runtime event
 
+### Requirement: Raw runtime events are secret-safe
+The agent shell SHALL emit local `raw` runtime events without exposing raw non-protocol inbound text, parser details, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, or input contents.
+
+#### Scenario: Non-protocol inbound text is redacted
+- **WHEN** the managed runtime receives inbound text that cannot be decoded as a protocol envelope
+- **THEN** the local `raw` runtime event MUST expose only secret-safe metadata such as byte length and MUST NOT expose the original text
+
+#### Scenario: Relay parser details are not exposed
+- **WHEN** the managed runtime receives a relay rejection or other malformed inbound text that includes parser details or raw payload fragments
+- **THEN** the local `raw` runtime event MUST NOT expose those details or fragments
+
 ### Requirement: Agent shell CLI argument validation
 The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions.
 
