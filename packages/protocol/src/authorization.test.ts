@@ -67,6 +67,75 @@ describe("session authorization state machine", () => {
     ).toThrow("visible host session");
   });
 
+  it("allows host approval to grant the exact requested scope", () => {
+    const approved = approveSessionAuthorization(pending(), {
+      grantedPermissions: ["screen:view", "input:pointer"],
+      now: baseTime
+    });
+
+    expect(approved).toMatchObject({
+      status: "approved",
+      permissions: ["screen:view", "input:pointer"]
+    });
+  });
+
+  it("allows host approval to narrow the requested scope", () => {
+    const approved = approveSessionAuthorization(pending(), {
+      grantedPermissions: ["screen:view"],
+      now: baseTime
+    });
+
+    expect(approved).toMatchObject({
+      status: "approved",
+      permissions: ["screen:view"]
+    });
+  });
+
+  it("rejects approval grants that exceed the requested scope", () => {
+    expect(() =>
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view", "input:keyboard"],
+        now: baseTime
+      })
+    ).toThrow("not requested");
+  });
+
+  it("rejects empty or duplicate approval grants", () => {
+    expect(() =>
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: [],
+        now: baseTime
+      })
+    ).toThrow("at least one granted permission");
+    expect(() =>
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view", "screen:view"],
+        now: baseTime
+      })
+    ).toThrow("unique");
+  });
+
+  it("rejects pending authorization requests without requested permissions", () => {
+    expect(() =>
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: [],
+        now: baseTime
+      })
+    ).toThrow("at least one requested permission");
+    expect(() =>
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view", "screen:view"],
+        now: baseTime
+      })
+    ).toThrow("unique");
+  });
+
   it("authorizes granted actions only when active and visible", () => {
     const active = activateSessionAuthorization(
       approveSessionAuthorization(pending(), {

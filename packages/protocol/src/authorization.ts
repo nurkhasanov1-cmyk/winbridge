@@ -46,6 +46,11 @@ export function createPendingSessionAuthorization(input: {
 }): SessionAuthorization {
   const now = input.now ?? new Date();
   const ttlMs = input.ttlMs ?? 30 * 60_000;
+  const requestedPermissions = parseUniquePermissions(input.requestedPermissions, {
+    allowEmpty: false,
+    duplicateMessage: "Requested permissions must be unique",
+    emptyMessage: "Session authorization requires at least one requested permission"
+  });
 
   return SessionAuthorizationSchema.parse({
     authorizationId: input.authorizationId ?? `authz_${randomUUID()}`,
@@ -53,7 +58,7 @@ export function createPendingSessionAuthorization(input: {
     hostPeerId: input.hostPeerId,
     viewerPeerId: input.viewerPeerId,
     status: "pending",
-    permissions: input.requestedPermissions,
+    permissions: requestedPermissions,
     visibleToHost: false,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -70,11 +75,22 @@ export function approveSessionAuthorization(
 ): SessionAuthorization {
   const now = input.now ?? new Date();
   const parsed = assertMutablePending(authorization, now);
+  const grantedPermissions = parseUniquePermissions(input.grantedPermissions, {
+    allowEmpty: false,
+    duplicateMessage: "Granted permissions must be unique",
+    emptyMessage: "Session authorization approval requires at least one granted permission"
+  });
+
+  for (const permission of grantedPermissions) {
+    if (!parsed.permissions.includes(permission)) {
+      throw new Error(`Granted permission was not requested: ${permission}`);
+    }
+  }
 
   return SessionAuthorizationSchema.parse({
     ...parsed,
     status: "approved",
-    permissions: input.grantedPermissions,
+    permissions: grantedPermissions,
     approvedAt: now.toISOString(),
     updatedAt: now.toISOString()
   });
@@ -308,4 +324,25 @@ function assertNotExpired(authorization: SessionAuthorization, now = new Date())
   if (isSessionAuthorizationExpired(authorization, now)) {
     throw new Error("Session authorization is expired");
   }
+}
+
+function parseUniquePermissions(
+  permissions: Permission[],
+  messages: {
+    allowEmpty: boolean;
+    duplicateMessage: string;
+    emptyMessage: string;
+  }
+): Permission[] {
+  const parsed = z.array(PermissionSchema).max(16).parse(permissions);
+
+  if (!messages.allowEmpty && parsed.length === 0) {
+    throw new Error(messages.emptyMessage);
+  }
+
+  if (new Set(parsed).size !== parsed.length) {
+    throw new Error(messages.duplicateMessage);
+  }
+
+  return parsed;
 }
