@@ -4,7 +4,7 @@
 Defines the consent-bound authorization state machine for visible, scoped, expiring remote assistance permissions.
 ## Requirements
 ### Requirement: Consent-bound lifecycle
-The system SHALL model remote assistance authorization as an explicit lifecycle that begins pending and cannot become active without host approval.
+The system SHALL model remote assistance authorization as an explicit lifecycle that begins pending and cannot become active without host approval, and SHALL reject malformed or unsafe pending authorization TTL inputs before creating authorization records.
 
 #### Scenario: Session request is created
 - **WHEN** a viewer requests remote assistance
@@ -13,6 +13,14 @@ The system SHALL model remote assistance authorization as an explicit lifecycle 
 #### Scenario: Host denies request
 - **WHEN** the host denies a pending request
 - **THEN** the system marks the authorization denied and remote action checks fail closed
+
+#### Scenario: Pending authorization TTL is omitted
+- **WHEN** pending authorization is created without an explicit TTL
+- **THEN** the system uses the default pending authorization expiration window
+
+#### Scenario: Pending authorization TTL is malformed
+- **WHEN** pending authorization is created with a fractional, negative, zero, non-finite, or timer-unsafe TTL value
+- **THEN** the system rejects the request before creating an authorization record
 
 ### Requirement: Visible activation gate
 The system SHALL activate a remote assistance session only when host consent is approved and the host-visible session indicator is active.

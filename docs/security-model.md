@@ -70,6 +70,8 @@ Permission revocation is a host-visible live-session transition. The shared auth
 
 Host approval can narrow the viewer's requested permission scope, but it must not expand it. The shared authorization state machine rejects empty approval grants, duplicate grants, and grants for permissions that were not present in the pending viewer request.
 
+Pending authorization TTL inputs are bounded exact integer milliseconds before a session authorization record is created, preventing invalid or timer-unsafe consent windows.
+
 ## Development Shell Consent Simulation
 
 The non-native agent shell can simulate consent messages for development:

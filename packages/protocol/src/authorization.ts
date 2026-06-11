@@ -15,6 +15,8 @@ export const SessionAuthorizationStatusSchema = z.enum([
 export type SessionAuthorizationStatus = z.infer<typeof SessionAuthorizationStatusSchema>;
 
 const grantBearingStatuses = new Set<SessionAuthorizationStatus>(["pending", "approved", "active", "paused"]);
+const DEFAULT_AUTHORIZATION_TTL_MS = 30 * 60_000;
+const MAX_AUTHORIZATION_TTL_MS = 2_147_483_647;
 const AuthorizationReasonSchema = z
   .string()
   .min(1)
@@ -106,7 +108,8 @@ export function createPendingSessionAuthorization(input: {
   authorizationId?: string;
 }): SessionAuthorization {
   const now = input.now ?? new Date();
-  const ttlMs = input.ttlMs ?? 30 * 60_000;
+  const ttlMs = input.ttlMs ?? DEFAULT_AUTHORIZATION_TTL_MS;
+  assertSafeAuthorizationTtl(ttlMs);
   const requestedPermissions = parseUniquePermissions(input.requestedPermissions, {
     allowEmpty: false,
     duplicateMessage: "Requested permissions must be unique",
@@ -386,6 +389,12 @@ function assertMutablePending(authorization: SessionAuthorization, now = new Dat
 function assertNotExpired(authorization: SessionAuthorization, now = new Date()): void {
   if (isSessionAuthorizationExpired(authorization, now)) {
     throw new Error("Session authorization is expired");
+  }
+}
+
+function assertSafeAuthorizationTtl(ttlMs: number): void {
+  if (!Number.isInteger(ttlMs) || ttlMs < 1 || ttlMs > MAX_AUTHORIZATION_TTL_MS) {
+    throw new Error(`Authorization TTL must be an integer from 1 through ${MAX_AUTHORIZATION_TTL_MS}`);
   }
 }
 

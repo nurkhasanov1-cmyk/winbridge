@@ -145,6 +145,45 @@ describe("session authorization state machine", () => {
     ).toThrow("unique");
   });
 
+  it("uses bounded authorization TTL values when creating pending requests", () => {
+    expect(pending().expiresAt).toBe("2026-06-11T00:30:00.000Z");
+    expect(
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view"],
+        ttlMs: 1,
+        now: baseTime
+      }).expiresAt
+    ).toBe("2026-06-11T00:00:00.001Z");
+    expect(
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view"],
+        ttlMs: 2_147_483_647,
+        now: baseTime
+      }).expiresAt
+    ).toBe("2026-07-05T20:31:23.647Z");
+  });
+
+  it("rejects malformed authorization TTL values before creating pending requests", () => {
+    for (const ttlMs of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648]) {
+      expect(() =>
+        createPendingSessionAuthorization({
+          sessionId: "session-demo",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          requestedPermissions: ["screen:view"],
+          ttlMs,
+          now: baseTime
+        })
+      ).toThrow("Authorization TTL");
+    }
+  });
+
   it("rejects authorization records and grants with malformed identifiers", () => {
     expect(() =>
       createPendingSessionAuthorization({
