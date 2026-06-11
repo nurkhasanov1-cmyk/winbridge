@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { AuditOutcomeSchema } from "./audit.js";
+import { AuditOutcomeSchema, redactAuditDetail } from "./audit.js";
 import { SessionAuthorizationStatusSchema } from "./authorization.js";
 import { DeviceIdentitySchema } from "./identity.js";
 import { PairingCodeSchema, PermissionSchema, SessionRoleSchema } from "./session.js";
@@ -151,7 +151,7 @@ export const AuditEventMessageSchema = BaseMessageSchema.extend({
   actorPeerId: z.string().min(3),
   action: z.string().min(1).max(120),
   outcome: AuditOutcomeSchema,
-  detail: z.record(z.unknown()).default({})
+  detail: z.record(z.unknown()).default({}).transform(redactAuditDetail)
 });
 
 export const ProtocolEnvelopeSchema = z.union([

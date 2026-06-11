@@ -255,6 +255,126 @@ describe("protocol envelopes", () => {
       })
     ).toThrow();
   });
+
+  it("redacts sensitive audit-event detail fields when parsing protocol messages", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: "agent-shell.test",
+      outcome: "accepted",
+      detail: {
+        token: "raw-token",
+        credential: "raw-credential",
+        password: "raw-password",
+        pairingCode: "123-456",
+        keystroke: "typed secret",
+        screenshot: "image bytes",
+        screenData: "screen bytes",
+        screenContent: "visible data",
+        secret: "raw-secret",
+        safeCount: 2
+      }
+    });
+
+    expect(parsed).toMatchObject({
+      type: "audit-event",
+      detail: {
+        token: "[REDACTED]",
+        credential: "[REDACTED]",
+        password: "[REDACTED]",
+        pairingCode: "[REDACTED]",
+        keystroke: "[REDACTED]",
+        screenshot: "[REDACTED]",
+        screenData: "[REDACTED]",
+        screenContent: "[REDACTED]",
+        secret: "[REDACTED]",
+        safeCount: 2
+      }
+    });
+    expect(JSON.stringify(parsed)).not.toContain("raw-token");
+    expect(JSON.stringify(parsed)).not.toContain("123-456");
+  });
+
+  it("redacts nested sensitive audit-event detail fields in objects and arrays", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: "agent-shell.test",
+      outcome: "accepted",
+      detail: {
+        nested: {
+          safe: "kept",
+          token: "nested-token"
+        },
+        attempts: [
+          {
+            credential: "nested-credential",
+            remaining: 1
+          }
+        ]
+      }
+    });
+
+    expect(parsed).toMatchObject({
+      type: "audit-event",
+      detail: {
+        nested: {
+          safe: "kept",
+          token: "[REDACTED]"
+        },
+        attempts: [
+          {
+            credential: "[REDACTED]",
+            remaining: 1
+          }
+        ]
+      }
+    });
+    expect(JSON.stringify(parsed)).not.toContain("nested-token");
+    expect(JSON.stringify(parsed)).not.toContain("nested-credential");
+  });
+
+  it("redacts audit-event detail fields when encoding protocol messages", () => {
+    const encoded = encodeProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: "agent-shell.test",
+      outcome: "accepted",
+      detail: {
+        token: "raw-token",
+        safe: "kept"
+      }
+    });
+    const decoded = JSON.parse(encoded);
+
+    expect(decoded.detail).toEqual({
+      token: "[REDACTED]",
+      safe: "kept"
+    });
+    expect(encoded).not.toContain("raw-token");
+  });
+
+  it("defaults omitted audit-event detail to an empty object", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: "agent-shell.test",
+      outcome: "accepted"
+    });
+
+    expect(parsed).toMatchObject({
+      type: "audit-event",
+      detail: {}
+    });
+  });
 });
 
 describe("session grants", () => {
