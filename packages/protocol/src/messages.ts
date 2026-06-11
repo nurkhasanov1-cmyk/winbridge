@@ -34,7 +34,9 @@ export const HostConsentRequiredMessageSchema = BaseMessageSchema.extend({
   type: z.literal("host-consent-required"),
   viewerPeerId: z.string().min(3),
   viewerDisplayName: z.string().min(1).max(120),
-  requestedPermissions: z.array(PermissionSchema).max(16)
+  requestedPermissions: z.array(PermissionSchema).min(1).max(16)
+}).superRefine((message, context) => {
+  rejectDuplicatePermissions(message.requestedPermissions, context, "requestedPermissions");
 });
 
 export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
@@ -43,7 +45,33 @@ export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
   viewerPeerId: z.string().min(3),
   approved: z.boolean(),
   grantedPermissions: z.array(PermissionSchema).max(16),
-  reason: z.string().max(240).optional()
+  reason: z.string().min(1).max(240).optional()
+}).superRefine((message, context) => {
+  rejectDuplicatePermissions(message.grantedPermissions, context, "grantedPermissions");
+
+  if (message.approved && message.grantedPermissions.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Approved host consent decisions require granted permissions",
+      path: ["grantedPermissions"]
+    });
+  }
+
+  if (!message.approved && message.grantedPermissions.length > 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Denied host consent decisions cannot grant permissions",
+      path: ["grantedPermissions"]
+    });
+  }
+
+  if (!message.approved && (message.reason?.trim().length ?? 0) === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Denied host consent decisions require a reason",
+      path: ["reason"]
+    });
+  }
 });
 
 export const SessionAuthorizationRequestMessageSchema = BaseMessageSchema.extend({

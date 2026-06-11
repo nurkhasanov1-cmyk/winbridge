@@ -89,6 +89,113 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("join-session");
   });
 
+  it("accepts valid legacy host consent request and decision messages", () => {
+    const request = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "host-consent-required",
+      viewerPeerId: "viewer-1",
+      viewerDisplayName: "Viewer",
+      requestedPermissions: ["screen:view"]
+    });
+    const approval = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "host-consent-decision",
+      hostPeerId: "host-1",
+      viewerPeerId: "viewer-1",
+      approved: true,
+      grantedPermissions: ["screen:view"]
+    });
+    const denial = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "host-consent-decision",
+      hostPeerId: "host-1",
+      viewerPeerId: "viewer-1",
+      approved: false,
+      grantedPermissions: [],
+      reason: "Host denied"
+    });
+
+    expect(request.type).toBe("host-consent-required");
+    expect(approval.type).toBe("host-consent-decision");
+    expect(denial.type).toBe("host-consent-decision");
+  });
+
+  it("rejects malformed legacy host consent request permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-required",
+        viewerPeerId: "viewer-1",
+        viewerDisplayName: "Viewer",
+        requestedPermissions: []
+      })
+    ).toThrow();
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-required",
+        viewerPeerId: "viewer-1",
+        viewerDisplayName: "Viewer",
+        requestedPermissions: ["screen:view", "screen:view"]
+      })
+    ).toThrow("requestedPermissions must be unique");
+  });
+
+  it("rejects malformed legacy host consent decision grants", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-decision",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        approved: true,
+        grantedPermissions: []
+      })
+    ).toThrow("require granted permissions");
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-decision",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        approved: true,
+        grantedPermissions: ["screen:view", "screen:view"]
+      })
+    ).toThrow("grantedPermissions must be unique");
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-decision",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        approved: false,
+        grantedPermissions: ["screen:view"],
+        reason: "Host denied"
+      })
+    ).toThrow("cannot grant permissions");
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-decision",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        approved: false,
+        grantedPermissions: []
+      })
+    ).toThrow("require a reason");
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-decision",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        approved: false,
+        grantedPermissions: [],
+        reason: "   "
+      })
+    ).toThrow("require a reason");
+  });
+
   it("accepts session authorization request messages", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),
