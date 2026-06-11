@@ -81,7 +81,7 @@ Pending authorization TTL inputs are bounded exact integer milliseconds before a
 The non-native agent shell can simulate consent messages for development:
 
 - Runtime startup sends `join-session` first and defers `hello` until a relay recipient is available through a two-peer `relay-ready` message or an inbound peer `hello`.
-- Viewer requests are explicit through requested permissions.
+- Viewer requests are explicit through requested permissions and a paired two-peer relay room.
 - Host approval is not automatic.
 - Host approval requires `--host-decision approve`.
 - Active session state is withheld unless `--visible-session true` is set.

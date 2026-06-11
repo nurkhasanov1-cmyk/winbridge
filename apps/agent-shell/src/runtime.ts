@@ -260,14 +260,14 @@ function handleMessage(
 
     if (envelope.type === "relay-ready" && envelope.roomSize >= 2) {
       sendHelloOnce(socket, options, sessionState);
+
+      if (options.role === "viewer") {
+        sendViewerAuthorizationRequest(socket, options);
+      }
     }
 
     if (envelope.type === "hello") {
       sendHelloOnce(socket, options, sessionState);
-    }
-
-    if (envelope.type === "relay-ready" && options.role === "viewer") {
-      sendViewerAuthorizationRequest(socket, options);
     }
 
     if (envelope.type === "session-authorization-request" && options.role === "host") {

@@ -4,7 +4,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileAuditSink, MemoryAuditSink, type AuditSink } from "@winbridge/audit-log";
-import { createMessageBase, type Permission, type ProtocolEnvelope } from "@winbridge/protocol";
+import {
+  createMessageBase,
+  encodeProtocolEnvelope,
+  type Permission,
+  type ProtocolEnvelope
+} from "@winbridge/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 import { createRelayRuntime, type RelayRuntime } from "../../relay/src/server.js";
@@ -250,6 +255,34 @@ describe("agent shell consent workflow", () => {
       viewerPeerId: "viewer-1",
       requestedPermissions: ["screen:view"]
     });
+  });
+
+  it("does not send viewer authorization requests before the room is paired", async () => {
+    const onePeerServer = await startOnePeerReadyServer();
+    const viewerEvents: AgentShellEvent[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(onePeerServer.url, ["screen:view"], viewerEvents);
+
+      await waitForMessage(
+        viewerEvents,
+        (message) => message.type === "relay-ready" && message.peerId === "viewer-1" && message.roomSize === 1
+      );
+      await delay(100);
+
+      expect(
+        viewerEvents.filter((event) => event.direction === "sent" && event.message.type === "hello")
+      ).toHaveLength(0);
+      expect(
+        viewerEvents.filter(
+          (event) => event.direction === "sent" && event.message.type === "session-authorization-request"
+        )
+      ).toHaveLength(0);
+    } finally {
+      await viewer?.stop();
+      await onePeerServer.stop();
+    }
   });
 
   it("does not send a host decision when host decision is omitted", async () => {
@@ -1754,6 +1787,44 @@ async function startCloseReasonServer(closeReason: string): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Close reason test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startOnePeerReadyServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "relay-ready",
+        peerId: "viewer-1",
+        roomSize: 1
+      }));
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("One-peer ready test server did not expose a TCP port");
   }
 
   return {
