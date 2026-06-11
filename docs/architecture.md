@@ -46,6 +46,7 @@ Audit output must not contain raw tokens, raw pairing codes, credentials, keystr
 
 Provides a development WebSocket relay:
 
+- Starts through a managed runtime with explicit `start()` and `stop()` lifecycle.
 - Accepts host/viewer peers.
 - Requires session id, peer id, role, and pairing credential.
 - Optionally enforces a shared development token.
@@ -56,6 +57,8 @@ Provides a development WebSocket relay:
 
 This relay is not production authorization. A future identity/auth OpenSpec change must add proper accounts, token lifecycle, device trust, and audit persistence.
 Production abuse protection also needs a distributed limiter or edge protection; the current limiter is single-process development hardening.
+
+The CLI entrypoint and integration tests use the same runtime implementation. Tests start the relay on an ephemeral local port and verify real WebSocket join, forwarding, rejection, and rate-limit behavior.
 
 ### apps/agent-shell
 
