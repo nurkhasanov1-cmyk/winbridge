@@ -14,7 +14,9 @@ export const SessionAuthorizationStatusSchema = z.enum([
 ]);
 export type SessionAuthorizationStatus = z.infer<typeof SessionAuthorizationStatusSchema>;
 
-export const SessionAuthorizationSchema = z.object({
+const grantBearingStatuses = new Set<SessionAuthorizationStatus>(["pending", "approved", "active", "paused"]);
+
+const SessionAuthorizationBaseSchema = z.object({
   authorizationId: z.string().min(8),
   sessionId: z.string().min(3),
   hostPeerId: z.string().min(3),
@@ -25,13 +27,67 @@ export const SessionAuthorizationSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
+  deniedAt: z.string().datetime().optional(),
   approvedAt: z.string().datetime().optional(),
   activatedAt: z.string().datetime().optional(),
   pausedAt: z.string().datetime().optional(),
   resumedAt: z.string().datetime().optional(),
   revokedAt: z.string().datetime().optional(),
   terminatedAt: z.string().datetime().optional(),
+  expiredAt: z.string().datetime().optional(),
   reason: z.string().min(1).max(240).optional()
+});
+export const SessionAuthorizationSchema = SessionAuthorizationBaseSchema.superRefine((authorization, ctx) => {
+  if (new Set(authorization.permissions).size !== authorization.permissions.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Session authorization permissions must be unique",
+      path: ["permissions"]
+    });
+  }
+
+  if (grantBearingStatuses.has(authorization.status) && authorization.permissions.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${authorization.status} session authorization requires at least one permission`,
+      path: ["permissions"]
+    });
+  }
+
+  if ((authorization.status === "active" || authorization.status === "paused") && !authorization.visibleToHost) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${authorization.status} session authorization must be visible to host`,
+      path: ["visibleToHost"]
+    });
+  }
+
+  requireLifecycleTimestamp(authorization.status, "denied", authorization.deniedAt, "deniedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "approved", authorization.approvedAt, "approvedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "active", authorization.approvedAt, "approvedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "active", authorization.activatedAt, "activatedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "paused", authorization.approvedAt, "approvedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "paused", authorization.activatedAt, "activatedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "paused", authorization.pausedAt, "pausedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "revoked", authorization.revokedAt, "revokedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "terminated", authorization.terminatedAt, "terminatedAt", ctx);
+  requireLifecycleTimestamp(authorization.status, "expired", authorization.expiredAt, "expiredAt", ctx);
+
+  if (authorization.status === "active" && authorization.pausedAt && !authorization.resumedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "active session authorization with prior pause requires resumedAt",
+      path: ["resumedAt"]
+    });
+  }
+
+  if (authorization.resumedAt && !authorization.pausedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "session authorization resumedAt requires pausedAt",
+      path: ["pausedAt"]
+    });
+  }
 });
 export type SessionAuthorization = z.infer<typeof SessionAuthorizationSchema>;
 
@@ -110,6 +166,7 @@ export function denySessionAuthorization(
     ...parsed,
     status: "denied",
     reason: input.reason,
+    deniedAt: now.toISOString(),
     updatedAt: now.toISOString()
   });
 }
@@ -271,6 +328,7 @@ export function expireSessionAuthorization(
   return SessionAuthorizationSchema.parse({
     ...parsed,
     status: "expired",
+    expiredAt: now.toISOString(),
     updatedAt: now.toISOString(),
     reason: "Authorization expired"
   });
@@ -345,4 +403,22 @@ function parseUniquePermissions(
   }
 
   return parsed;
+}
+
+function requireLifecycleTimestamp(
+  actualStatus: SessionAuthorizationStatus,
+  requiredStatus: SessionAuthorizationStatus,
+  value: string | undefined,
+  field: string,
+  ctx: z.RefinementCtx
+): void {
+  if (actualStatus !== requiredStatus || value) {
+    return;
+  }
+
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: `${actualStatus} session authorization requires ${field}`,
+    path: [field]
+  });
 }

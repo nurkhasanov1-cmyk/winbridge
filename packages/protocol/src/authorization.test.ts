@@ -9,6 +9,7 @@ import {
   pauseSessionAuthorization,
   resumeSessionAuthorization,
   revokeSessionPermission,
+  SessionAuthorizationSchema,
   terminateSessionAuthorization
 } from "./authorization.js";
 import { createPairingTicket, createPairedDevice } from "./identity.js";
@@ -23,6 +24,12 @@ function pending() {
     requestedPermissions: ["screen:view", "input:pointer"],
     now: baseTime
   });
+}
+
+function withoutField(value: object, field: string): unknown {
+  const next = { ...value } as Record<string, unknown>;
+  delete next[field];
+  return next;
 }
 
 describe("session authorization state machine", () => {
@@ -43,6 +50,7 @@ describe("session authorization state machine", () => {
     });
 
     expect(denied.status).toBe("denied");
+    expect(denied.deniedAt).toBe(baseTime.toISOString());
     expect(() =>
       assertSessionActionAuthorized({
         authorization: denied,
@@ -134,6 +142,128 @@ describe("session authorization state machine", () => {
         now: baseTime
       })
     ).toThrow("unique");
+  });
+
+  it("rejects malformed authorization records at schema parse time", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: baseTime
+    });
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...pending(),
+        permissions: ["screen:view", "screen:view"]
+      })
+    ).toThrow("permissions must be unique");
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...active,
+        permissions: []
+      })
+    ).toThrow("at least one permission");
+    expect(SessionAuthorizationSchema.parse(revoked)).toMatchObject({
+      status: "revoked",
+      permissions: []
+    });
+  });
+
+  it("rejects active or paused authorization records without host visibility", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const paused = pauseSessionAuthorization(active, { now: baseTime });
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...active,
+        visibleToHost: false
+      })
+    ).toThrow("visible to host");
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...paused,
+        visibleToHost: false
+      })
+    ).toThrow("visible to host");
+  });
+
+  it("requires lifecycle timestamps for parsed authorization records", () => {
+    const approved = approveSessionAuthorization(pending(), {
+      grantedPermissions: ["screen:view"],
+      now: baseTime
+    });
+    const active = activateSessionAuthorization(approved, {
+      visibleToHost: true,
+      now: baseTime
+    });
+    const paused = pauseSessionAuthorization(active, { now: baseTime });
+    const denied = denySessionAuthorization(pending(), {
+      reason: "Host denied",
+      now: baseTime
+    });
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: baseTime
+    });
+    const terminated = terminateSessionAuthorization(active, {
+      reason: "Host disconnected",
+      now: baseTime
+    });
+    const expired = expireSessionAuthorization(active, new Date("2026-06-11T00:31:00.000Z"));
+
+    expect(() => SessionAuthorizationSchema.parse(withoutField(denied, "deniedAt"))).toThrow("deniedAt");
+    expect(() => SessionAuthorizationSchema.parse(withoutField(approved, "approvedAt"))).toThrow("approvedAt");
+    expect(() => SessionAuthorizationSchema.parse(withoutField(active, "activatedAt"))).toThrow("activatedAt");
+    expect(() => SessionAuthorizationSchema.parse(withoutField(paused, "pausedAt"))).toThrow("pausedAt");
+    expect(() => SessionAuthorizationSchema.parse(withoutField(revoked, "revokedAt"))).toThrow("revokedAt");
+    expect(() => SessionAuthorizationSchema.parse(withoutField(terminated, "terminatedAt"))).toThrow("terminatedAt");
+    expect(() => SessionAuthorizationSchema.parse(withoutField(expired, "expiredAt"))).toThrow("expiredAt");
+  });
+
+  it("requires auditable resume history for parsed active authorization records", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const paused = pauseSessionAuthorization(active, {
+      now: new Date("2026-06-11T00:01:00.000Z")
+    });
+    const resumed = resumeSessionAuthorization(paused, {
+      now: new Date("2026-06-11T00:02:00.000Z")
+    });
+
+    expect(SessionAuthorizationSchema.parse(resumed)).toMatchObject({
+      status: "active",
+      pausedAt: "2026-06-11T00:01:00.000Z",
+      resumedAt: "2026-06-11T00:02:00.000Z"
+    });
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...active,
+        pausedAt: "2026-06-11T00:01:00.000Z"
+      })
+    ).toThrow("resumedAt");
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...active,
+        resumedAt: "2026-06-11T00:02:00.000Z"
+      })
+    ).toThrow("pausedAt");
   });
 
   it("authorizes granted actions only when active and visible", () => {
@@ -327,7 +457,7 @@ describe("session authorization state machine", () => {
         permission: "screen:view",
         now: baseTime
       })
-    ).toThrow("visible host session");
+    ).toThrow("visible");
     expect(() =>
       revokeSessionPermission(active, {
         permission: "screen:view",
@@ -383,6 +513,7 @@ describe("session authorization state machine", () => {
     const afterExpiry = new Date("2026-06-11T00:00:01.001Z");
 
     expect(expireSessionAuthorization(active, afterExpiry).status).toBe("expired");
+    expect(expireSessionAuthorization(active, afterExpiry).expiredAt).toBe(afterExpiry.toISOString());
     expect(() =>
       assertSessionActionAuthorized({
         authorization: active,
