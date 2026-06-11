@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import WebSocket, { WebSocketServer } from "ws";
 import { createRelayAuditSink, writeRelayAudit } from "./audit.js";
+import { createDevelopmentRateLimiter, type RateLimitDecision } from "./rate-limit.js";
 import {
   createMessageBase,
   decodeProtocolEnvelope,
@@ -14,6 +15,14 @@ const port = Number.parseInt(process.env.WINBRIDGE_RELAY_PORT ?? "8787", 10);
 const sharedToken = process.env.WINBRIDGE_RELAY_SHARED_TOKEN;
 const rooms = new RoomRegistry();
 const auditSink = createRelayAuditSink();
+const invalidTokenLimiter = createDevelopmentRateLimiter(
+  process.env,
+  "WINBRIDGE_RELAY_INVALID_TOKEN"
+);
+const invalidMessageLimiter = createDevelopmentRateLimiter(
+  process.env,
+  "WINBRIDGE_RELAY_INVALID_MESSAGE"
+);
 
 if (!sharedToken) {
   console.warn(
@@ -32,14 +41,19 @@ const wss = new WebSocketServer({ server });
 wss.on("connection", (socket, request) => {
   const requestUrl = new URL(request.url ?? "/", "ws://localhost");
   const token = requestUrl.searchParams.get("token");
+  const remoteKey = request.socket.remoteAddress ?? "unknown-remote";
 
   if (sharedToken && token !== sharedToken) {
+    const decision = invalidTokenLimiter.consume(remoteKey);
     writeRelayAudit(auditSink, {
       action: "relay.token.denied",
       outcome: "denied",
-      detail: { tokenProvided: Boolean(token) }
+      detail: {
+        tokenProvided: Boolean(token),
+        rateLimit: rateLimitAuditDetail(decision)
+      }
     });
-    socket.close(1008, "Invalid relay token");
+    socket.close(1008, decision.allowed ? "Invalid relay token" : "Relay token rate limit exceeded");
     return;
   }
 
@@ -100,13 +114,17 @@ wss.on("connection", (socket, request) => {
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Invalid relay message";
+      const decision = invalidMessageLimiter.consume(registeredPeer?.peerId ?? remoteKey);
       writeRelayAudit(auditSink, {
         action: "relay.message.rejected",
         outcome: "failed",
         sessionId: registeredPeer?.sessionId,
         peerId: registeredPeer?.peerId,
         reason,
-        detail: { registered: Boolean(registeredPeer) }
+        detail: {
+          registered: Boolean(registeredPeer),
+          rateLimit: rateLimitAuditDetail(decision)
+        }
       });
       socket.send(
         JSON.stringify({
@@ -114,6 +132,9 @@ wss.on("connection", (socket, request) => {
           reason
         })
       );
+      if (!decision.allowed) {
+        socket.close(1008, "Relay message rate limit exceeded");
+      }
     }
   });
 
@@ -154,4 +175,13 @@ function registerFirstMessage(envelope: ProtocolEnvelope, send: (data: string) =
   }
 
   return peer;
+}
+
+function rateLimitAuditDetail(decision: RateLimitDecision) {
+  return {
+    allowed: decision.allowed,
+    limit: decision.limit,
+    remaining: decision.remaining,
+    resetAt: decision.resetAt
+  };
 }

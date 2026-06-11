@@ -63,6 +63,17 @@ The implementation must reject:
 - Bypassing UAC or Windows consent prompts.
 - Silent install/uninstall flows that hide the product from the host user.
 
+## Development Relay Abuse Protection
+
+The development relay includes in-memory rate limiting for repeated invalid shared-token attempts and malformed or rejected protocol messages.
+
+Rate-limit audit details are secret-safe:
+
+- They may include booleans, remaining attempts, limits, and reset times.
+- They must not include raw tokens, raw pairing codes, credentials, raw payload secrets, keystrokes, screenshots, or screen contents.
+
+This is not production abuse protection. Production relay design must use durable or distributed controls.
+
 ## Review Gates
 
 ### Design Gate

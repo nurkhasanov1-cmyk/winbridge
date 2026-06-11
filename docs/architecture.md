@@ -52,8 +52,10 @@ Provides a development WebSocket relay:
 - Limits a room to one host and one viewer.
 - Validates protocol envelopes before forwarding.
 - Emits structured development audit records for joins, denials, forwarding, and disconnects.
+- Rate-limits repeated invalid token and malformed-message attempts with in-memory development defaults.
 
 This relay is not production authorization. A future identity/auth OpenSpec change must add proper accounts, token lifecycle, device trust, and audit persistence.
+Production abuse protection also needs a distributed limiter or edge protection; the current limiter is single-process development hardening.
 
 ### apps/agent-shell
 
