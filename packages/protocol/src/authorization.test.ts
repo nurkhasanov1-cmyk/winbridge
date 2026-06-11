@@ -124,6 +124,155 @@ describe("session authorization state machine", () => {
     ).toBe("active");
   });
 
+  it("keeps paused authorizations paused after partial permission revocation", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view", "input:pointer"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const paused = pauseSessionAuthorization(active, { now: baseTime });
+    const revoked = revokeSessionPermission(paused, {
+      permission: "screen:view",
+      now: baseTime
+    });
+
+    expect(revoked).toMatchObject({
+      status: "paused",
+      visibleToHost: true,
+      permissions: ["input:pointer"]
+    });
+    expect(() =>
+      assertSessionActionAuthorized({
+        authorization: revoked,
+        permission: "input:pointer",
+        now: baseTime
+      })
+    ).toThrow("paused");
+  });
+
+  it("marks authorization revoked when the final permission is revoked", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: baseTime
+    });
+
+    expect(revoked).toMatchObject({
+      status: "revoked",
+      permissions: []
+    });
+    expect(() =>
+      assertSessionActionAuthorized({
+        authorization: revoked,
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("revoked");
+  });
+
+  it("rejects unsafe permission revocation transitions", () => {
+    const approved = approveSessionAuthorization(pending(), {
+      grantedPermissions: ["screen:view"],
+      now: baseTime
+    });
+    const active = activateSessionAuthorization(approved, {
+      visibleToHost: true,
+      now: baseTime
+    });
+    const denied = denySessionAuthorization(pending(), {
+      reason: "Host denied",
+      now: baseTime
+    });
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: baseTime
+    });
+    const terminated = terminateSessionAuthorization(active, {
+      reason: "Host disconnected",
+      now: baseTime
+    });
+    const expired = expireSessionAuthorization(active, new Date("2026-06-11T00:31:00.000Z"));
+
+    expect(() =>
+      revokeSessionPermission(pending(), {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("pending");
+    expect(() =>
+      revokeSessionPermission(approved, {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("approved");
+    expect(() =>
+      revokeSessionPermission(denied, {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("denied");
+    expect(() =>
+      revokeSessionPermission(revoked, {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("revoked");
+    expect(() =>
+      revokeSessionPermission(terminated, {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("terminated");
+    expect(() =>
+      revokeSessionPermission(expired, {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("expired");
+  });
+
+  it("rejects permission revocation without visible unexpired matching grant", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const invisibleActive = {
+      ...active,
+      visibleToHost: false
+    };
+    const expiredTime = new Date("2026-06-11T00:31:00.000Z");
+
+    expect(() =>
+      revokeSessionPermission(invisibleActive, {
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("visible host session");
+    expect(() =>
+      revokeSessionPermission(active, {
+        permission: "screen:view",
+        now: expiredTime
+      })
+    ).toThrow("expired");
+    expect(() =>
+      revokeSessionPermission(active, {
+        permission: "input:keyboard",
+        now: baseTime
+      })
+    ).toThrow("revoked permission");
+  });
+
   it("denies all actions after termination", () => {
     const active = activateSessionAuthorization(
       approveSessionAuthorization(pending(), {

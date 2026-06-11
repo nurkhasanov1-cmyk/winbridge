@@ -129,3 +129,5 @@ Future native adapters must call the shared protocol authorization checks before
 - The authorization has not expired.
 - The requested permission is present.
 - The session is not paused, revoked, or terminated.
+
+Permission revocation must also use the shared authorization state machine. It is valid only for visible, unexpired `active` or `paused` authorizations with the permission currently granted; partial revocation preserves pause state, and final revocation marks the authorization `revoked`.

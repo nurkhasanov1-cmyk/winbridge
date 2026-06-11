@@ -63,6 +63,8 @@ Protocol messages for session authorization lifecycle are explicit:
 
 Receiving one of these messages is not enough to perform a sensitive action. Components must still evaluate the shared authorization state and requested permission.
 
+Permission revocation is a host-visible live-session transition. The shared authorization state machine accepts it only for visible, unexpired `active` or `paused` authorizations that currently include the permission. Revocation from pending, approved, denied, revoked, terminated, expired, invisible, or missing-permission states is rejected and must not create or restore access.
+
 ## Development Shell Consent Simulation
 
 The non-native agent shell can simulate consent messages for development:

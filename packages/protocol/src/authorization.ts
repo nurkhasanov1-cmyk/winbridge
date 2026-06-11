@@ -138,6 +138,21 @@ export function revokeSessionPermission(
   const parsed = SessionAuthorizationSchema.parse(authorization);
   const now = input.now ?? new Date();
   const permission = PermissionSchema.parse(input.permission);
+
+  if (parsed.status !== "active" && parsed.status !== "paused") {
+    throw new Error(`Cannot revoke permission from ${parsed.status} state`);
+  }
+
+  if (!parsed.visibleToHost) {
+    throw new Error("Cannot revoke permission without visible host session");
+  }
+
+  assertNotExpired(parsed, now);
+
+  if (!parsed.permissions.includes(permission)) {
+    throw new Error("Session authorization does not include revoked permission");
+  }
+
   const remainingPermissions = parsed.permissions.filter((existing) => existing !== permission);
 
   return SessionAuthorizationSchema.parse({
