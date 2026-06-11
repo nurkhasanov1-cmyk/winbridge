@@ -159,6 +159,36 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("oversized-offer-marker");
   });
 
+  it("returns bounded relay errors for malformed messages", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send("not-json secret-token 123-456");
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "signal");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain("secret-token");
+    expect(JSON.stringify(rejected)).not.toContain("123-456");
+    expect(JSON.stringify(rejected)).not.toContain("not-json");
+  });
+
   it("notifies the viewer when the host disconnects", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });

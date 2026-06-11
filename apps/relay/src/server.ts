@@ -26,6 +26,20 @@ import { RoomRegistry, type RelayJoinResult, type RelayPairingConfig, type Relay
 
 const MAX_RELAY_MESSAGE_BYTES = 64 * 1024;
 const RELAY_MESSAGE_TOO_LARGE_REASON = `Relay message exceeds ${MAX_RELAY_MESSAGE_BYTES} bytes`;
+const GENERIC_RELAY_REJECTION_REASON = "Invalid relay message";
+const SAFE_RELAY_REJECTION_REASONS = new Set([
+  GENERIC_RELAY_REJECTION_REASON,
+  RELAY_MESSAGE_TOO_LARGE_REASON,
+  "Host pairing ticket required",
+  "Pairing code mismatch",
+  "Pairing ticket is expired",
+  "Pairing ticket has no remaining uses",
+  "Message session does not match registered peer",
+  "Peer disconnect notices are relay-originated",
+  "Signal payload must not be empty",
+  "Signal payload must be 16384 bytes or less",
+  "Signal payload must not contain sensitive remote-assistance data"
+]);
 
 export type RelayRuntimeOptions = {
   port?: number;
@@ -122,7 +136,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
             registeredPeer = registeredJoin.peer;
             joinResult = registeredJoin.result;
           } catch (error) {
-            const reason = error instanceof Error ? error.message : "Join rejected";
+            const reason = safeRelayRejectionReason(error);
             writeRelayAudit(auditSink, {
               action: "relay.peer.join.denied",
               outcome: "denied",
@@ -182,7 +196,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
           detail: { messageType: envelope.type }
         });
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "Invalid relay message";
+        const reason = safeRelayRejectionReason(error);
         const decision = invalidMessageLimiter.consume(registeredPeer?.peerId ?? remoteKey);
         writeRelayAudit(auditSink, {
           action: "relay.message.rejected",
@@ -337,6 +351,33 @@ function websocketErrorReason(error: Error): string | undefined {
   }
 
   return undefined;
+}
+
+function safeRelayRejectionReason(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return GENERIC_RELAY_REJECTION_REASON;
+  }
+
+  const exactReason = SAFE_RELAY_REJECTION_REASONS.has(error.message)
+    ? error.message
+    : undefined;
+  if (exactReason) {
+    return exactReason;
+  }
+
+  if (error.message.includes("Signal payload must be 16384 bytes or less")) {
+    return "Signal payload must be 16384 bytes or less";
+  }
+
+  if (error.message.includes("Signal payload must not be empty")) {
+    return "Signal payload must not be empty";
+  }
+
+  if (error.message.includes("Signal payload must not contain sensitive remote-assistance data")) {
+    return "Signal payload must not contain sensitive remote-assistance data";
+  }
+
+  return GENERIC_RELAY_REJECTION_REASON;
 }
 
 function startPeerHeartbeat(options: {
