@@ -42,6 +42,11 @@ export const PairedDeviceSchema = z.object({
 });
 export type PairedDevice = z.infer<typeof PairedDeviceSchema>;
 
+const DEFAULT_PAIRING_TICKET_TTL_MS = 5 * 60_000;
+const DEFAULT_PAIRING_TICKET_MAX_USES = 1;
+const MAX_PAIRING_TICKET_TTL_MS = 2_147_483_647;
+const MAX_PAIRING_TICKET_MAX_USES = 10;
+
 export function createDeviceIdentity(input: {
   displayName: string;
   platform?: DeviceIdentity["platform"];
@@ -80,8 +85,20 @@ export function createPairingTicket(input: {
   pairingCodeSalt?: string;
 }): PairingTicket {
   const now = input.now ?? new Date();
-  const ttlMs = input.ttlMs ?? 5 * 60_000;
-  const maxUses = input.maxUses ?? 1;
+  const ttlMs = input.ttlMs ?? DEFAULT_PAIRING_TICKET_TTL_MS;
+  const maxUses = input.maxUses ?? DEFAULT_PAIRING_TICKET_MAX_USES;
+  assertBoundedInteger(
+    ttlMs,
+    "Pairing ticket TTL",
+    0,
+    MAX_PAIRING_TICKET_TTL_MS
+  );
+  assertBoundedInteger(
+    maxUses,
+    "Pairing ticket max uses",
+    1,
+    MAX_PAIRING_TICKET_MAX_USES
+  );
   const pairingCodeSalt = input.pairingCodeSalt ?? createPairingCodeSalt();
 
   return PairingTicketSchema.parse({
@@ -152,5 +169,16 @@ export function assertRemoteActionAuthorized(input: {
 
   if (!grant.permissions.includes(PermissionSchema.parse(input.permission))) {
     throw new Error("Session grant does not include requested permission");
+  }
+}
+
+function assertBoundedInteger(
+  value: number,
+  label: string,
+  min: number,
+  max: number
+): void {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${label} must be an integer from ${min} through ${max}`);
   }
 }

@@ -107,6 +107,52 @@ describe("pairing tickets", () => {
     expect(JSON.stringify([first, second])).not.toContain("123-456");
   });
 
+  it("uses bounded pairing ticket factory defaults and valid overrides", () => {
+    const defaultTicket = createPairingTicket({
+      sessionId: "session-demo",
+      hostDeviceId: "dev_host_1",
+      pairingCode: "123-456",
+      now: new Date("2026-06-11T00:00:00.000Z")
+    });
+    const immediateExpiryTicket = createPairingTicket({
+      sessionId: "session-demo",
+      hostDeviceId: "dev_host_1",
+      pairingCode: "123-456",
+      ttlMs: 0,
+      maxUses: 10,
+      now: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    expect(defaultTicket.expiresAt).toBe("2026-06-11T00:05:00.000Z");
+    expect(defaultTicket.remainingUses).toBe(1);
+    expect(immediateExpiryTicket.expiresAt).toBe("2026-06-11T00:00:00.000Z");
+    expect(immediateExpiryTicket.remainingUses).toBe(10);
+  });
+
+  it("rejects malformed pairing ticket factory values before ticket creation", () => {
+    for (const ttlMs of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648]) {
+      expect(() =>
+        createPairingTicket({
+          sessionId: "session-demo",
+          hostDeviceId: "dev_host_1",
+          pairingCode: "123-456",
+          ttlMs
+        })
+      ).toThrow("Pairing ticket TTL");
+    }
+
+    for (const maxUses of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 11]) {
+      expect(() =>
+        createPairingTicket({
+          sessionId: "session-demo",
+          hostDeviceId: "dev_host_1",
+          pairingCode: "123-456",
+          maxUses
+        })
+      ).toThrow("Pairing ticket max uses");
+    }
+  });
+
   it("rejects expired tickets", () => {
     const ticket = createPairingTicket({
       sessionId: "session-demo",
