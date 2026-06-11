@@ -51,6 +51,8 @@ export const SessionAuthorizationRequestMessageSchema = BaseMessageSchema.extend
   viewerPeerId: z.string().min(3),
   requestedPermissions: z.array(PermissionSchema).min(1).max(16),
   reason: z.string().min(1).max(240).optional()
+}).superRefine((message, context) => {
+  rejectDuplicatePermissions(message.requestedPermissions, context, "requestedPermissions");
 });
 
 export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.extend({
@@ -63,11 +65,21 @@ export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.exten
   expiresAt: z.string().datetime().optional(),
   reason: z.string().min(1).max(240).optional()
 }).superRefine((message, context) => {
+  rejectDuplicatePermissions(message.grantedPermissions, context, "grantedPermissions");
+
   if (message.decision === "approved" && !message.expiresAt) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Approved session authorization decisions require expiresAt",
       path: ["expiresAt"]
+    });
+  }
+
+  if (message.decision === "approved" && message.grantedPermissions.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Approved session authorization decisions require granted permissions",
+      path: ["grantedPermissions"]
     });
   }
 
@@ -98,11 +110,32 @@ export const SessionAuthorizationStateMessageSchema = BaseMessageSchema.extend({
   expiresAt: z.string().datetime(),
   reason: z.string().min(1).max(240).optional()
 }).superRefine((message, context) => {
+  rejectDuplicatePermissions(message.permissions, context, "permissions");
+
   if ((message.status === "active" || message.status === "paused") && !message.visibleToHost) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Active or paused session authorization state requires visibleToHost",
       path: ["visibleToHost"]
+    });
+  }
+
+  const grantBearingState =
+    message.status === "approved" || message.status === "active" || message.status === "paused";
+
+  if (grantBearingState && message.permissions.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${message.status} session authorization state requires permissions`,
+      path: ["permissions"]
+    });
+  }
+
+  if (!grantBearingState && message.permissions.length > 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${message.status} session authorization state cannot carry permissions`,
+      path: ["permissions"]
     });
   }
 });
@@ -191,4 +224,20 @@ export function createMessageBase(sessionId: string) {
     sessionId,
     createdAt: new Date().toISOString()
   } as const;
+}
+
+function rejectDuplicatePermissions(
+  permissions: unknown[],
+  context: z.RefinementCtx,
+  path: "requestedPermissions" | "grantedPermissions" | "permissions"
+): void {
+  if (new Set(permissions).size === permissions.length) {
+    return;
+  }
+
+  context.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: `${path} must be unique`,
+    path: [path]
+  });
 }

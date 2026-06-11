@@ -101,6 +101,17 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("session-authorization-request");
   });
 
+  it("rejects duplicate authorization request permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view", "screen:view"]
+      })
+    ).toThrow("requestedPermissions must be unique");
+  });
+
   it("accepts approved session authorization decisions with expiration", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),
@@ -116,6 +127,36 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("session-authorization-decision");
   });
 
+  it("rejects approved session authorization decisions without granted permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-decision",
+        authorizationId: "authz-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        decision: "approved",
+        grantedPermissions: [],
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      })
+    ).toThrow("require granted permissions");
+  });
+
+  it("rejects session authorization decisions with duplicate grants", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-decision",
+        authorizationId: "authz-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        decision: "approved",
+        grantedPermissions: ["screen:view", "screen:view"],
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      })
+    ).toThrow("grantedPermissions must be unique");
+  });
+
   it("accepts denied session authorization decisions with reason and no grants", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),
@@ -129,6 +170,21 @@ describe("protocol envelopes", () => {
     });
 
     expect(parsed.type).toBe("session-authorization-decision");
+  });
+
+  it("rejects denied session authorization decisions with granted permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-decision",
+        authorizationId: "authz-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        decision: "denied",
+        grantedPermissions: ["screen:view"],
+        reason: "Host denied"
+      })
+    ).toThrow("cannot grant permissions");
   });
 
   it("rejects approved session authorization decisions without expiration", () => {
@@ -160,6 +216,26 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("session-authorization-state");
   });
 
+  it("accepts terminal session authorization state updates with empty permissions", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "session-authorization-state",
+      authorizationId: "authz-demo",
+      actorPeerId: "host-1",
+      status: "revoked",
+      visibleToHost: true,
+      permissions: [],
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      reason: "Host revoked"
+    });
+
+    expect(parsed).toMatchObject({
+      type: "session-authorization-state",
+      status: "revoked",
+      permissions: []
+    });
+  });
+
   it("rejects active session authorization state updates that are not visible to host", () => {
     expect(() =>
       parseProtocolEnvelope({
@@ -173,6 +249,52 @@ describe("protocol envelopes", () => {
         expiresAt: new Date(Date.now() + 60_000).toISOString()
       })
     ).toThrow();
+  });
+
+  it("rejects grant-bearing state updates without permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-state",
+        authorizationId: "authz-demo",
+        actorPeerId: "host-1",
+        status: "active",
+        visibleToHost: true,
+        permissions: [],
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      })
+    ).toThrow("requires permissions");
+  });
+
+  it("rejects state updates with duplicate permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-state",
+        authorizationId: "authz-demo",
+        actorPeerId: "host-1",
+        status: "active",
+        visibleToHost: true,
+        permissions: ["screen:view", "screen:view"],
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      })
+    ).toThrow("permissions must be unique");
+  });
+
+  it("rejects fail-closed state updates that carry permissions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-state",
+        authorizationId: "authz-demo",
+        actorPeerId: "host-1",
+        status: "terminated",
+        visibleToHost: true,
+        permissions: ["screen:view"],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        reason: "Host terminated"
+      })
+    ).toThrow("cannot carry permissions");
   });
 
   it("accepts paused visible session authorization state updates", () => {
