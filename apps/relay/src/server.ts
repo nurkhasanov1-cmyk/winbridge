@@ -3,6 +3,16 @@ import type { AddressInfo } from "node:net";
 import WebSocket, { WebSocketServer } from "ws";
 import type { AuditSink } from "@winbridge/audit-log";
 import { createRelayAuditSink, writeRelayAudit } from "./audit.js";
+import {
+  createRelayHeartbeatConfig,
+  createRelayHeartbeatState,
+  isHeartbeatTimedOut,
+  markHeartbeatPing,
+  markHeartbeatPong,
+  normalizeRelayHeartbeatConfig,
+  type RelayHeartbeatConfig,
+  type RelayHeartbeatSetting
+} from "./heartbeat.js";
 import { createDevelopmentRateLimiter, SlidingWindowRateLimiter, type RateLimitDecision } from "./rate-limit.js";
 import {
   createMessageBase,
@@ -18,6 +28,7 @@ export type RelayRuntimeOptions = {
   sharedToken?: string;
   rooms?: RoomRegistry;
   auditSink?: AuditSink;
+  heartbeat?: RelayHeartbeatSetting;
   invalidTokenLimiter?: SlidingWindowRateLimiter;
   invalidMessageLimiter?: SlidingWindowRateLimiter;
   logger?: {
@@ -37,6 +48,12 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
   const sharedToken = options.sharedToken;
   const rooms = options.rooms ?? new RoomRegistry();
   const auditSink = options.auditSink ?? createRelayAuditSink();
+  const heartbeat =
+    options.heartbeat === undefined
+      ? createRelayHeartbeatConfig()
+      : options.heartbeat === false
+        ? false
+        : normalizeRelayHeartbeatConfig(options.heartbeat);
   const invalidTokenLimiter =
     options.invalidTokenLimiter ??
     createDevelopmentRateLimiter(process.env, "WINBRIDGE_RELAY_INVALID_TOKEN");
@@ -67,6 +84,14 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
     }
 
     let registeredPeer: RelayPeer | undefined;
+    const stopHeartbeat = heartbeat
+      ? startPeerHeartbeat({
+          auditSink,
+          config: heartbeat,
+          getPeer: () => registeredPeer,
+          socket
+        })
+      : () => undefined;
 
     socket.on("message", (data) => {
       try {
@@ -148,6 +173,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
     });
 
     socket.on("close", () => {
+      stopHeartbeat();
       if (registeredPeer) {
         rooms.leave(registeredPeer.sessionId, registeredPeer.peerId);
         writeRelayAudit(auditSink, {
@@ -190,6 +216,78 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
     url() {
       return serverUrl(server);
     }
+  };
+}
+
+function startPeerHeartbeat(options: {
+  auditSink: AuditSink;
+  config: RelayHeartbeatConfig;
+  getPeer: () => RelayPeer | undefined;
+  socket: WebSocket;
+}): () => void {
+  let heartbeatState = createRelayHeartbeatState();
+  let heartbeatTimeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+
+  const clearHeartbeatTimeout = () => {
+    if (heartbeatTimeout) {
+      clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = undefined;
+    }
+  };
+
+  const terminateForTimeout = () => {
+    if (
+      timedOut ||
+      !isHeartbeatTimedOut(heartbeatState, Date.now(), options.config.timeoutMs)
+    ) {
+      return;
+    }
+
+    timedOut = true;
+    clearHeartbeatTimeout();
+
+    const peer = options.getPeer();
+    writeRelayAudit(options.auditSink, {
+      action: "relay.peer.heartbeat.timeout",
+      outcome: "failed",
+      sessionId: peer?.sessionId,
+      peerId: peer?.peerId,
+      reason: "Peer missed relay heartbeat",
+      detail: {
+        registered: Boolean(peer),
+        role: peer?.role ?? "unregistered",
+        intervalMs: options.config.intervalMs,
+        timeoutMs: options.config.timeoutMs
+      }
+    });
+
+    options.socket.terminate();
+  };
+
+  const sendHeartbeat = () => {
+    if (options.socket.readyState !== WebSocket.OPEN || heartbeatState.awaitingPong) {
+      return;
+    }
+
+    heartbeatState = markHeartbeatPing(heartbeatState);
+    options.socket.ping();
+    clearHeartbeatTimeout();
+    heartbeatTimeout = setTimeout(terminateForTimeout, options.config.timeoutMs);
+  };
+
+  const heartbeatInterval = setInterval(sendHeartbeat, options.config.intervalMs);
+  const onPong = () => {
+    heartbeatState = markHeartbeatPong(heartbeatState);
+    clearHeartbeatTimeout();
+  };
+
+  options.socket.on("pong", onPong);
+
+  return () => {
+    clearInterval(heartbeatInterval);
+    clearHeartbeatTimeout();
+    options.socket.off("pong", onPong);
   };
 }
 

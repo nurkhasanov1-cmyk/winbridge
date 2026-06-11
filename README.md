@@ -62,6 +62,16 @@ $env:WINBRIDGE_RELAY_AUDIT_LOG_PATH = "logs\\relay-audit.jsonl"
 npm run dev:relay
 ```
 
+Development relay heartbeat is enabled by default. For local tuning:
+
+```powershell
+$env:WINBRIDGE_RELAY_HEARTBEAT_INTERVAL_MS = "30000"
+$env:WINBRIDGE_RELAY_HEARTBEAT_TIMEOUT_MS = "10000"
+npm run dev:relay
+```
+
+Set `WINBRIDGE_RELAY_HEARTBEAT_ENABLED=false` only for focused development tests that should not start heartbeat timers.
+
 In separate terminals, exercise the protocol:
 
 ```powershell

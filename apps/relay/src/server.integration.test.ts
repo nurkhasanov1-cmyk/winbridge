@@ -5,7 +5,7 @@ import {
   type ProtocolEnvelope
 } from "@winbridge/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import WebSocket, { type RawData } from "ws";
+import WebSocket, { type ClientOptions, type RawData } from "ws";
 import { SlidingWindowRateLimiter } from "./rate-limit.js";
 import { createRelayRuntime, type RelayRuntime, type RelayRuntimeOptions } from "./server.js";
 
@@ -114,6 +114,39 @@ describe("relay runtime integration", () => {
 
     expect(await waitForClose(host)).toMatchObject({ code: 1008 });
   });
+
+  it("terminates and audits a registered peer after heartbeat timeout", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({
+      auditSink,
+      heartbeat: {
+        intervalMs: 10,
+        timeoutMs: 20
+      }
+    });
+    const host = await openSocket(runtime.url(), { autoPong: false });
+
+    host.send(joinMessage("session-demo", "host-1", "host", "123-456"));
+    await waitForProtocolMessage(host, (message) => message.type === "relay-ready");
+    await waitForClose(host);
+
+    const timeout = auditSink.records().find((record) => record.action === "relay.peer.heartbeat.timeout");
+    expect(timeout).toMatchObject({
+      action: "relay.peer.heartbeat.timeout",
+      outcome: "failed",
+      sessionId: "session-demo",
+      actor: {
+        id: "development-relay:host-1"
+      },
+      detail: {
+        registered: true,
+        role: "host",
+        intervalMs: 10,
+        timeoutMs: 20
+      }
+    });
+    expect(JSON.stringify(timeout)).not.toContain("123-456");
+  });
 });
 
 async function startRuntime(
@@ -122,6 +155,7 @@ async function startRuntime(
   const runtime = createRelayRuntime({
     port: 0,
     auditSink: new MemoryAuditSink(),
+    heartbeat: false,
     logger: silentLogger,
     ...options
   });
@@ -145,9 +179,9 @@ function joinMessage(
   });
 }
 
-function openSocket(url: string): Promise<WebSocket> {
+function openSocket(url: string, options: ClientOptions = {}): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(url, options);
     socket.once("open", () => resolve(socket));
     socket.once("error", reject);
   });

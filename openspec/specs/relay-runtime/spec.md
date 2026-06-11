@@ -1,7 +1,7 @@
 # relay-runtime Specification
 
 ## Purpose
-TBD - created by archiving change add-relay-runtime-integration-harness. Update Purpose after archive.
+Defines the managed development relay lifecycle, shared CLI/test runtime behavior, and test hooks for security-relevant relay events.
 ## Requirements
 ### Requirement: Managed relay lifecycle
 The development relay SHALL expose a managed runtime with explicit start and stop operations.
@@ -39,3 +39,20 @@ The relay runtime SHALL allow tests to inject audit sinks and inspect security-r
 - **WHEN** a peer connects with an invalid shared token
 - **THEN** the injected audit sink receives a secret-safe denied token event
 
+### Requirement: Testable heartbeat configuration
+The managed relay runtime SHALL allow callers to inject relay heartbeat settings or disable heartbeat timers for tests.
+
+#### Scenario: Runtime receives injected heartbeat settings
+- **WHEN** tests create a relay runtime with explicit heartbeat interval and timeout values
+- **THEN** the runtime uses those values instead of environment-derived defaults
+
+#### Scenario: Runtime disables heartbeat timers
+- **WHEN** tests create a relay runtime with heartbeat disabled
+- **THEN** the runtime accepts peers without starting per-peer heartbeat timers
+
+### Requirement: CLI heartbeat defaults
+The relay CLI SHALL start the managed relay runtime with environment-derived heartbeat configuration.
+
+#### Scenario: CLI starts without heartbeat variables
+- **WHEN** the relay CLI starts without heartbeat environment variables
+- **THEN** the runtime enables development heartbeat defaults

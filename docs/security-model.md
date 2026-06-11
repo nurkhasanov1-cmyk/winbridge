@@ -94,6 +94,19 @@ Rate-limit audit details are secret-safe:
 
 This is not production abuse protection. Production relay design must use durable or distributed controls.
 
+## Development Relay Heartbeat
+
+The development relay sends WebSocket heartbeat pings and terminates peers that miss the configured heartbeat timeout.
+
+Heartbeat timeout audit details are secret-safe:
+
+- They may include registration state, peer role, interval, and timeout values.
+- They must not include raw shared tokens, raw pairing codes, credentials, raw payload secrets, keystrokes, screenshots, or screen contents.
+
+Heartbeat checks only verify transport liveness. They must not grant permissions, approve sessions, start capture, send input, suppress host visibility, or bypass consent workflows.
+
+This is not production liveness management. Production relay design must cover distributed presence, reconnect policy, and stale-session cleanup.
+
 ## Development Audit Files
 
 The relay can write local development audit records to JSONL when `WINBRIDGE_RELAY_AUDIT_LOG_PATH` is configured.
