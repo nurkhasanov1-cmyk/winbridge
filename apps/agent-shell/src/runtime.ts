@@ -130,6 +130,7 @@ type HostWorkflowState = {
 
 type AgentShellSessionState = {
   remotePeerDisconnected: boolean;
+  helloSent: boolean;
 };
 
 export function createAgentShellRuntime(options: AgentShellRuntimeOptions): AgentShellRuntime {
@@ -139,7 +140,8 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
   let socket: WebSocket | undefined;
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const sessionState: AgentShellSessionState = {
-    remotePeerDisconnected: false
+    remotePeerDisconnected: false,
+    helloSent: false
   };
 
   if (options.token) {
@@ -196,15 +198,6 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
             role: options.role,
             pairingCode: PairingCodeSchema.parse(options.pairingCode),
             deviceIdentity
-          });
-
-          sendProtocol(socket, options, {
-            ...createMessageBase(options.sessionId),
-            type: "hello",
-            peerId: options.peerId,
-            role: options.role,
-            displayName: options.displayName,
-            capabilities: ["session:visible", "consent:required", "audit:stdout"]
           });
 
           resolve();
@@ -265,6 +258,14 @@ function handleMessage(
       sessionState.remotePeerDisconnected = true;
     }
 
+    if (envelope.type === "relay-ready" && envelope.roomSize >= 2) {
+      sendHelloOnce(socket, options, sessionState);
+    }
+
+    if (envelope.type === "hello") {
+      sendHelloOnce(socket, options, sessionState);
+    }
+
     if (envelope.type === "relay-ready" && options.role === "viewer") {
       sendViewerAuthorizationRequest(socket, options);
     }
@@ -275,6 +276,26 @@ function handleMessage(
   } catch (error) {
     reportRuntimeError(options, error);
   }
+}
+
+function sendHelloOnce(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): void {
+  if (sessionState.helloSent || sessionState.remotePeerDisconnected) {
+    return;
+  }
+
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "hello",
+    peerId: options.peerId,
+    role: options.role,
+    displayName: options.displayName,
+    capabilities: ["session:visible", "consent:required", "audit:stdout"]
+  });
+  sessionState.helloSent = true;
 }
 
 function summarizeProtocolMessage(envelope: ProtocolEnvelope): string {

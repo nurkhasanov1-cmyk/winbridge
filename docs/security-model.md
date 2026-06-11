@@ -80,6 +80,7 @@ Pending authorization TTL inputs are bounded exact integer milliseconds before a
 
 The non-native agent shell can simulate consent messages for development:
 
+- Runtime startup sends `join-session` first and defers `hello` until a relay recipient is available through a two-peer `relay-ready` message or an inbound peer `hello`.
 - Viewer requests are explicit through requested permissions.
 - Host approval is not automatic.
 - Host approval requires `--host-decision approve`.
@@ -104,6 +105,7 @@ The non-native agent shell can simulate consent messages for development:
 - Workflow timer values are exact integer milliseconds bounded to the safe JavaScript timer delay range before runtime startup.
 
 The shell never captures the screen, injects input, syncs clipboard, transfers files, installs services, or enables unattended access.
+Agent-shell `hello` is presence metadata only. It must not authorize a session, activate host visibility, grant permissions, start capture, send input, reconnect a peer, suppress visibility, or bypass consent workflows.
 
 When the shell receives `peer-disconnected`, it records remote peer disconnected state for the current development session. Host-side delayed workflow simulations for that peer fail closed after this state and do not send later revoke, pause, resume, termination, expiration, authorization-state, session-control, permission-revoked, or workflow audit-event messages.
 

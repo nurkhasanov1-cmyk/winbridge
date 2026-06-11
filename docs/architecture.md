@@ -99,6 +99,7 @@ Provides a CLI exerciser for protocol and relay behavior. It intentionally does 
 
 The shell has a managed runtime shared by CLI and tests. Development consent workflow behavior:
 
+- The runtime sends `join-session` on socket open and defers `hello` until the relay reports a two-peer room or a peer `hello` is received.
 - Viewer mode can send `session-authorization-request` when explicit `--request` permissions are provided.
 - Host mode does nothing by default when a request is received.
 - Host mode can send approval or denial only with explicit `--host-decision`.
@@ -125,6 +126,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 
 This workflow is a protocol simulator, not production host consent UI.
 Development agent-shell audit files are local development persistence, not production audit storage.
+Agent-shell `hello` messages are presence metadata only. They do not authorize sessions, activate visibility, grant permissions, or enable remote actions.
 
 ## Future Windows Architecture
 

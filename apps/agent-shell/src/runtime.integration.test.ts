@@ -121,6 +121,81 @@ describe("agent shell consent workflow", () => {
     );
   });
 
+  it("defers hello until the relay reports a recipient", async () => {
+    const hostLogs: string[] = [];
+    const { hostEvents } = await startRelayAndHost({
+      hostLogger: captureLogger(hostLogs)
+    });
+
+    await waitForMessage(
+      hostEvents,
+      (message) => message.type === "relay-ready" && message.peerId === "host-1" && message.roomSize === 1
+    );
+    await delay(100);
+
+    expect(
+      hostEvents.filter((event) => event.direction === "sent" && event.message.type === "join-session")
+    ).toHaveLength(1);
+    expect(
+      hostEvents.filter((event) => event.direction === "sent" && event.message.type === "hello")
+    ).toHaveLength(0);
+    expect(hostEvents.some((event) => event.direction === "raw")).toBe(false);
+    expect(hostEvents.some((event) => event.direction === "error")).toBe(false);
+    expect(hostLogs.join("\n")).not.toContain("received non-protocol message");
+    expect(hostLogs.join("\n")).not.toContain("relay-error");
+  });
+
+  it("exchanges hello once after peers are paired before authorization requests", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost();
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const viewerHello = await waitForSentMessage(viewerEvents, (message) => message.type === "hello");
+    const hostReceivedViewerHello = await waitForMessage(
+      hostEvents,
+      (message) => message.type === "hello" && message.peerId === "viewer-1"
+    );
+    const hostHello = await waitForSentMessage(hostEvents, (message) => message.type === "hello");
+    const viewerReceivedHostHello = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "hello" && message.peerId === "host-1"
+    );
+    const request = await waitForMessage(
+      hostEvents,
+      (message) => message.type === "session-authorization-request"
+    );
+
+    expect(viewerHello).toMatchObject({ type: "hello", peerId: "viewer-1", role: "viewer" });
+    expect(hostReceivedViewerHello).toMatchObject({ type: "hello", peerId: "viewer-1", role: "viewer" });
+    expect(hostHello).toMatchObject({ type: "hello", peerId: "host-1", role: "host" });
+    expect(viewerReceivedHostHello).toMatchObject({ type: "hello", peerId: "host-1", role: "host" });
+    expect(request).toMatchObject({
+      type: "session-authorization-request",
+      viewerPeerId: "viewer-1",
+      requestedPermissions: ["screen:view"]
+    });
+
+    expect(
+      hostEvents.filter((event) => event.direction === "sent" && event.message.type === "hello")
+    ).toHaveLength(1);
+    expect(
+      viewerEvents.filter((event) => event.direction === "sent" && event.message.type === "hello")
+    ).toHaveLength(1);
+
+    const hostReceivedHelloIndex = hostEvents.findIndex(
+      (event) => event.direction === "received" && event.message.type === "hello"
+    );
+    const hostSentHelloIndex = hostEvents.findIndex(
+      (event) => event.direction === "sent" && event.message.type === "hello"
+    );
+    const hostReceivedRequestIndex = hostEvents.findIndex(
+      (event) => event.direction === "received" && event.message.type === "session-authorization-request"
+    );
+
+    expect(hostReceivedHelloIndex).toBeGreaterThanOrEqual(0);
+    expect(hostSentHelloIndex).toBeGreaterThan(hostReceivedHelloIndex);
+    expect(hostReceivedRequestIndex).toBeGreaterThan(hostSentHelloIndex);
+  });
+
   it("emits sent signal events without raw payload contents", async () => {
     const { host, hostEvents } = await startRelayAndHost();
     await waitForMessage(
