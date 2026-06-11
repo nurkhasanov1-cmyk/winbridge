@@ -55,7 +55,24 @@ export class SlidingWindowRateLimiter {
 }
 
 export function createDevelopmentRateLimiter(env: NodeJS.ProcessEnv, prefix: string): SlidingWindowRateLimiter {
-  const limit = Number.parseInt(env[`${prefix}_LIMIT`] ?? "5", 10);
-  const windowMs = Number.parseInt(env[`${prefix}_WINDOW_MS`] ?? "60000", 10);
+  const limit = parseExactIntegerEnv(env[`${prefix}_LIMIT`], 5, 1, `${prefix}_LIMIT`);
+  const windowMs = parseExactIntegerEnv(env[`${prefix}_WINDOW_MS`], 60_000, 1000, `${prefix}_WINDOW_MS`);
   return new SlidingWindowRateLimiter({ limit, windowMs });
+}
+
+function parseExactIntegerEnv(raw: string | undefined, fallback: number, min: number, name: string): number {
+  if (raw === undefined) {
+    return fallback;
+  }
+
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be an exact positive integer`);
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (value < min) {
+    throw new Error(`${name} must be at least ${min}`);
+  }
+
+  return value;
 }

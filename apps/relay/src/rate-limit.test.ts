@@ -20,6 +20,8 @@ describe("SlidingWindowRateLimiter", () => {
   });
 
   it("supports environment defaults and overrides", () => {
+    expect(createDevelopmentRateLimiter({}, "WINBRIDGE_RELAY_TEST").consume("peer").limit).toBe(5);
+
     const limiter = createDevelopmentRateLimiter(
       {
         WINBRIDGE_RELAY_TEST_LIMIT: "3",
@@ -29,5 +31,25 @@ describe("SlidingWindowRateLimiter", () => {
     );
 
     expect(limiter.consume("peer").limit).toBe(3);
+  });
+
+  it("rejects malformed environment overrides", () => {
+    for (const limit of ["", "0", "-1", "1.5", "5x"]) {
+      expect(() =>
+        createDevelopmentRateLimiter(
+          { WINBRIDGE_RELAY_TEST_LIMIT: limit },
+          "WINBRIDGE_RELAY_TEST"
+        )
+      ).toThrow("WINBRIDGE_RELAY_TEST_LIMIT");
+    }
+
+    for (const windowMs of ["", "999", "-1", "1000.5", "60000x"]) {
+      expect(() =>
+        createDevelopmentRateLimiter(
+          { WINBRIDGE_RELAY_TEST_WINDOW_MS: windowMs },
+          "WINBRIDGE_RELAY_TEST"
+        )
+      ).toThrow("WINBRIDGE_RELAY_TEST_WINDOW_MS");
+    }
   });
 });

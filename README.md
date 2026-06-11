@@ -79,6 +79,16 @@ npm run dev:relay
 
 Set `WINBRIDGE_RELAY_HEARTBEAT_ENABLED=false` only for focused development tests that should not start heartbeat timers.
 
+Development invalid-token and invalid-message rate limits use exact integer env values:
+
+```powershell
+$env:WINBRIDGE_RELAY_INVALID_TOKEN_LIMIT = "5"
+$env:WINBRIDGE_RELAY_INVALID_TOKEN_WINDOW_MS = "60000"
+$env:WINBRIDGE_RELAY_INVALID_MESSAGE_LIMIT = "5"
+$env:WINBRIDGE_RELAY_INVALID_MESSAGE_WINDOW_MS = "60000"
+npm run dev:relay
+```
+
 Development relay pairing tickets are host-created, hashed, expiring, and consumed by viewer joins:
 
 ```powershell
