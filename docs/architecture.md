@@ -71,7 +71,7 @@ Provides a development WebSocket relay:
 - Validates protocol envelopes before forwarding.
 - Rejects malformed protocol identifiers before relay room registration.
 - Bounds raw WebSocket message size before protocol decoding.
-- Rejects empty, oversized, or sensitive-key `signal` payloads before forwarding.
+- Rejects empty, oversized, or sensitive-key `signal` payloads before forwarding, including auth/session secret key names while preserving non-secret lifecycle identifiers such as `authorizationId`.
 - Normalizes malformed-message `relay-error` and invalid-message audit reasons to bounded secret-safe strings.
 - Emits structured development audit records for joins, denials, forwarding, and disconnects.
 - Rate-limits repeated invalid token and malformed-message attempts with in-memory development defaults.

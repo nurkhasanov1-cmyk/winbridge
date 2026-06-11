@@ -91,8 +91,12 @@ describe("relay runtime integration", () => {
         toPeerId: "viewer-1",
         payload: {
           kind: "offer",
+          authorizationId: "authz-demo",
           nested: {
-            token: "secret-token",
+            apiKey: "raw-api-key",
+            rawAuthorizationHeader: "Authorization: Bearer raw-token",
+            sessionCookie: "sid=raw-cookie",
+            privateKey: "raw-private-key",
             pairingCode: "123-456"
           }
         }
@@ -118,7 +122,10 @@ describe("relay runtime integration", () => {
         registered: true
       }
     });
-    expect(JSON.stringify(rejected)).not.toContain("secret-token");
+    expect(JSON.stringify(rejected)).not.toContain("raw-api-key");
+    expect(JSON.stringify(rejected)).not.toContain("raw-token");
+    expect(JSON.stringify(rejected)).not.toContain("raw-cookie");
+    expect(JSON.stringify(rejected)).not.toContain("raw-private-key");
     expect(JSON.stringify(rejected)).not.toContain("123-456");
   });
 

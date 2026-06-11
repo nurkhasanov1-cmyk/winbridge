@@ -106,6 +106,57 @@ describe("protocol envelopes", () => {
     ).toThrow("must not contain sensitive remote-assistance data");
   });
 
+  it("rejects signal payloads with auth and session secret keys", () => {
+    const unsafePayloads: Array<Record<string, unknown>> = [
+      { apiKey: "raw-api-key" },
+      { authorization: "Bearer raw-token" },
+      { rawAuthorizationHeader: "Authorization: Bearer raw-token" },
+      { authHeaderValue: "Bearer raw-token" },
+      { proxyAuthorization: "Proxy raw-secret" },
+      { sessionCookie: "sid=raw-cookie" },
+      { privateKey: "raw-private-key" },
+      { nested: [{ rawAuthorizationHeader: "Authorization: Bearer nested-token" }] }
+    ];
+
+    for (const payload of unsafePayloads) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload
+        })
+      ).toThrow("must not contain sensitive remote-assistance data");
+    }
+  });
+
+  it("accepts signal payloads with non-secret lifecycle authorization identifiers", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        kind: "candidate",
+        authorizationId: "authz-demo",
+        nested: {
+          authorizationId: "authz-nested"
+        }
+      }
+    });
+
+    expect(parsed).toMatchObject({
+      type: "signal",
+      payload: {
+        authorizationId: "authz-demo",
+        nested: {
+          authorizationId: "authz-nested"
+        }
+      }
+    });
+  });
+
   it("rejects unsafe signal payloads when encoding protocol messages", () => {
     expect(() =>
       encodeProtocolEnvelope({

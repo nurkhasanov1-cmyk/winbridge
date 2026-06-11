@@ -19,6 +19,12 @@ const SENSITIVE_SIGNAL_PAYLOAD_KEY_INDICATORS = [
   "token",
   "credential",
   "password",
+  "apikey",
+  "authorizationheader",
+  "authheader",
+  "proxyauthorization",
+  "cookie",
+  "privatekey",
   "pairingcode",
   "keystroke",
   "keylog",
@@ -27,6 +33,8 @@ const SENSITIVE_SIGNAL_PAYLOAD_KEY_INDICATORS = [
   "screencontent",
   "secret"
 ] as const;
+const SENSITIVE_SIGNAL_PAYLOAD_KEY_EXACT_MATCHES = new Set(["authorization"]);
+const SAFE_SIGNAL_PAYLOAD_KEY_EXACT_MATCHES = new Set(["authorizationid"]);
 
 const BaseMessageSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),
@@ -375,8 +383,7 @@ function findSensitiveSignalPayloadPath(
   }
 
   for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
-    if (SENSITIVE_SIGNAL_PAYLOAD_KEY_INDICATORS.some((indicator) => normalizedKey.includes(indicator))) {
+    if (isSensitiveSignalPayloadKey(key)) {
       return [...path, key];
     }
 
@@ -387,4 +394,16 @@ function findSensitiveSignalPayloadPath(
   }
 
   return undefined;
+}
+
+function isSensitiveSignalPayloadKey(key: string): boolean {
+  const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (SAFE_SIGNAL_PAYLOAD_KEY_EXACT_MATCHES.has(normalizedKey)) {
+    return false;
+  }
+
+  return (
+    SENSITIVE_SIGNAL_PAYLOAD_KEY_EXACT_MATCHES.has(normalizedKey) ||
+    SENSITIVE_SIGNAL_PAYLOAD_KEY_INDICATORS.some((indicator) => normalizedKey.includes(indicator))
+  );
 }
