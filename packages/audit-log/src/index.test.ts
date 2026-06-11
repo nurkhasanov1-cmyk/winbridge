@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { ConsoleAuditSink, MemoryAuditSink } from "./index.js";
+import { ConsoleAuditSink, FileAuditSink, MemoryAuditSink } from "./index.js";
 
 describe("MemoryAuditSink", () => {
   it("stores audit records in write order", () => {
@@ -75,5 +78,87 @@ describe("ConsoleAuditSink", () => {
       action: "relay.peer.disconnect",
       sessionId: "session-demo"
     });
+  });
+});
+
+describe("FileAuditSink", () => {
+  it("writes JSONL records in write order and creates parent directories", () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "nested", "audit.jsonl");
+    const sink = new FileAuditSink(path);
+
+    try {
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "first",
+        outcome: "accepted"
+      });
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "second",
+        outcome: "failed"
+      });
+
+      const lines = readFileSync(path, "utf8").trim().split(/\r?\n/);
+      expect(lines.map((line) => JSON.parse(line).action)).toEqual(["first", "second"]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("redacts sensitive values before writing JSONL records", () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "audit.jsonl");
+    const sink = new FileAuditSink(path);
+
+    try {
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.token.denied",
+        outcome: "denied",
+        detail: {
+          token: "secret-token",
+          pairingCode: "123-456",
+          credential: "secret-credential",
+          keystroke: "typed",
+          screenshot: "raw-screen"
+        }
+      });
+
+      const content = readFileSync(path, "utf8");
+      expect(content).not.toContain("secret-token");
+      expect(content).not.toContain("123-456");
+      expect(content).not.toContain("secret-credential");
+      expect(content).not.toContain("typed");
+      expect(content).not.toContain("raw-screen");
+      expect(JSON.parse(content).detail).toMatchObject({
+        token: "[REDACTED]",
+        pairingCode: "[REDACTED]",
+        credential: "[REDACTED]",
+        keystroke: "[REDACTED]",
+        screenshot: "[REDACTED]"
+      });
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("surfaces write failures", () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "directory-target");
+    const sink = new FileAuditSink(path);
+
+    try {
+      mkdirSync(path);
+      expect(() =>
+        sink.write({
+          actor: { type: "relay", id: "relay-dev" },
+          action: "will-fail",
+          outcome: "failed"
+        })
+      ).toThrow();
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });

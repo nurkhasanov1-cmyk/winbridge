@@ -47,6 +47,7 @@ Owns reusable development audit sinks:
 
 - In-memory sink for tests.
 - Console JSON-lines sink for local debugging.
+- File JSON-lines sink for local persistent development audit records.
 - Schema validation and redaction through protocol audit contracts.
 
 Audit output must not contain raw tokens, raw pairing codes, credentials, keystrokes, screenshots, or screen contents.
@@ -68,6 +69,8 @@ This relay is not production authorization. A future identity/auth OpenSpec chan
 Production abuse protection also needs a distributed limiter or edge protection; the current limiter is single-process development hardening.
 
 The CLI entrypoint and integration tests use the same runtime implementation. Tests start the relay on an ephemeral local port and verify real WebSocket join, forwarding, rejection, and rate-limit behavior.
+
+Set `WINBRIDGE_RELAY_AUDIT_LOG_PATH` to write relay audit events to a local JSONL file during development.
 
 ### apps/agent-shell
 

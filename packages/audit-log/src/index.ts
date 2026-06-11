@@ -1,3 +1,5 @@
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import {
   createAuditRecord,
   type AuditRecord,
@@ -32,6 +34,17 @@ export class ConsoleAuditSink implements AuditSink {
   write(input: AuditRecordInput): AuditRecord {
     const record = createAuditRecord(input);
     this.writer(JSON.stringify(record));
+    return record;
+  }
+}
+
+export class FileAuditSink implements AuditSink {
+  constructor(private readonly path: string) {}
+
+  write(input: AuditRecordInput): AuditRecord {
+    const record = createAuditRecord(input);
+    mkdirSync(dirname(this.path), { recursive: true });
+    appendFileSync(this.path, `${JSON.stringify(record)}\n`, { encoding: "utf8" });
     return record;
   }
 }

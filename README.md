@@ -55,6 +55,13 @@ Run the development relay:
 npm run dev:relay
 ```
 
+Persist development relay audit records as JSONL:
+
+```powershell
+$env:WINBRIDGE_RELAY_AUDIT_LOG_PATH = "logs\\relay-audit.jsonl"
+npm run dev:relay
+```
+
 In separate terminals, exercise the protocol:
 
 ```powershell

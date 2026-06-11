@@ -94,6 +94,14 @@ Rate-limit audit details are secret-safe:
 
 This is not production abuse protection. Production relay design must use durable or distributed controls.
 
+## Development Audit Files
+
+The relay can write local development audit records to JSONL when `WINBRIDGE_RELAY_AUDIT_LOG_PATH` is configured.
+
+File audit records use the same schema validation and redaction as memory and console sinks. Write failures are surfaced to the caller instead of silently dropping records.
+
+Development audit files must not contain raw tokens, raw pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets.
+
 ## Review Gates
 
 ### Design Gate
