@@ -75,7 +75,7 @@ The non-native agent shell can simulate consent messages for development:
 - Host approval is not automatic.
 - Host approval requires `--host-decision approve`.
 - Active session state is withheld unless `--visible-session true` is set.
-- CLI parsing rejects unknown, duplicate, missing-value, malformed permission, malformed pairing, and non-`true`/`false` `--visible-session` values before starting the runtime.
+- CLI parsing rejects unknown, duplicate, missing-value, malformed protocol identifier, malformed permission, malformed pairing, and non-`true`/`false` `--visible-session` values before starting the runtime.
 - Authorization expiration simulation uses `--authorization-ttl-ms` and only runs after visible activation.
 - Pause/resume simulation requires explicit visible approval plus `--pause-after-ms` and optional `--resume-after-ms`.
 - Permission revocation simulation requires explicit visible approval plus `--revoke-after-ms` and `--revoke-permission`.

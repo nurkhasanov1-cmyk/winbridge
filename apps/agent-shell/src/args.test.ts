@@ -54,6 +54,18 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects malformed protocol identifier values", () => {
+    expect(() => parseArgs(["viewer", "--session", "demo session"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() => parseArgs(["viewer", "--peer", "viewer/42"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() => parseArgs(["viewer", "--device", "dev viewer 42"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+  });
+
   it("parses valid workflow options", () => {
     const args = parseArgs(
       [

@@ -1,4 +1,12 @@
-import { PairingCodeSchema, PermissionSchema, type Permission, type SessionRole } from "@winbridge/protocol";
+import {
+  PairingCodeSchema,
+  PeerIdSchema,
+  PermissionSchema,
+  ProtocolIdentifierSchema,
+  SessionIdSchema,
+  type Permission,
+  type SessionRole
+} from "@winbridge/protocol";
 import { parsePermissions, type HostDecision } from "./runtime.js";
 
 export type AgentShellArgs = {
@@ -72,18 +80,19 @@ export function parseArgs(
   }
 
   const options = parseOptionMap(raw.slice(1));
-  const sessionId = options.get("session") ?? "demo";
+  const sessionId = parseSessionId(options.get("session") ?? "demo");
   const pairingCode = parsePairingCode(options.get("pairing") ?? "123-456");
+  const peerId = parsePeerId(options.get("peer") ?? `${role}-${processId}`);
 
   return {
     role,
     relayUrl: options.get("relay") ?? "ws://localhost:8787",
     sessionId,
     pairingCode,
-    peerId: options.get("peer") ?? `${role}-${processId}`,
+    peerId,
     displayName: options.get("name") ?? `${role} ${processId}`,
     token: options.get("token"),
-    deviceId: options.get("device") ?? `dev_${role}_${processId}`,
+    deviceId: parseProtocolIdentifier(options.get("device") ?? `dev_${role}_${processId}`),
     auditLogPath: options.get("audit-log") ?? env.WINBRIDGE_AGENT_AUDIT_LOG_PATH,
     requestedPermissions: parseRequestedPermissions(options.get("request")),
     hostDecision: parseHostDecision(options.get("host-decision")),
@@ -121,6 +130,30 @@ function parseOptionMap(rawOptions: string[]): Map<string, string> {
   }
 
   return options;
+}
+
+function parseSessionId(raw: string): string {
+  try {
+    return SessionIdSchema.parse(raw);
+  } catch {
+    throw new AgentShellUsageError();
+  }
+}
+
+function parsePeerId(raw: string): string {
+  try {
+    return PeerIdSchema.parse(raw);
+  } catch {
+    throw new AgentShellUsageError();
+  }
+}
+
+function parseProtocolIdentifier(raw: string): string {
+  try {
+    return ProtocolIdentifierSchema.min(8).parse(raw);
+  } catch {
+    throw new AgentShellUsageError();
+  }
 }
 
 function parsePairingCode(raw: string): string {
