@@ -103,11 +103,76 @@ describe("agent shell consent workflow", () => {
     ).toBe(false);
   });
 
+  it("sends audit events for approval and visible activation", async () => {
+    const { relay, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const approvalAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.approved"
+    );
+    const activeAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.active"
+    );
+
+    expect(approvalAudit).toMatchObject({
+      type: "audit-event",
+      outcome: "accepted",
+      detail: {
+        requestedPermissionCount: 1,
+        grantedPermissionCount: 1
+      }
+    });
+    expect(activeAudit).toMatchObject({
+      type: "audit-event",
+      outcome: "accepted",
+      detail: {
+        grantedPermissionCount: 1,
+        visibleToHost: true
+      }
+    });
+    expect(JSON.stringify([approvalAudit, activeAudit])).not.toContain("123-456");
+  });
+
+  it("sends a secret-safe audit event when host denies authorization", async () => {
+    const { relay, viewerEvents } = await startRelayAndHost({
+      decisionReason: "private denial reason",
+      hostDecision: "deny"
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const denialAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.denied"
+    );
+
+    expect(denialAudit).toMatchObject({
+      type: "audit-event",
+      outcome: "denied",
+      detail: {
+        requestedPermissionCount: 1,
+        reasonConfigured: true
+      }
+    });
+    expect(JSON.stringify(denialAudit)).not.toContain("private denial reason");
+  });
+
   it("sends revoked state after host revokes the only granted permission", async () => {
     const { relay, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       hostRevokeAfterMs: 10,
       hostRevokePermission: "screen:view",
+      hostRevokeReason: "private revoke reason",
       visibleToHost: true
     });
     await startViewer(relay.url(), ["screen:view"], viewerEvents);
@@ -124,6 +189,12 @@ describe("agent shell consent workflow", () => {
       viewerEvents,
       (message) => message.type === "session-authorization-state" && message.status === "revoked"
     );
+    const revokeAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.permission.revoked"
+    );
 
     expect(revoked).toMatchObject({
       type: "permission-revoked",
@@ -135,6 +206,16 @@ describe("agent shell consent workflow", () => {
       visibleToHost: true,
       permissions: []
     });
+    expect(revokeAudit).toMatchObject({
+      type: "audit-event",
+      outcome: "accepted",
+      detail: {
+        revokedPermission: "screen:view",
+        remainingPermissionCount: 0,
+        finalGrantRevoked: true
+      }
+    });
+    expect(JSON.stringify(revokeAudit)).not.toContain("private revoke reason");
   });
 
   it("keeps remaining permissions active after host revokes one granted permission", async () => {
@@ -157,12 +238,27 @@ describe("agent shell consent workflow", () => {
         message.status === "active" &&
         !message.permissions.includes("screen:view")
     );
+    const revokeAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.permission.revoked"
+    );
 
     expect(partialState).toMatchObject({
       type: "session-authorization-state",
       status: "active",
       visibleToHost: true,
       permissions: ["input:pointer"]
+    });
+    expect(revokeAudit).toMatchObject({
+      type: "audit-event",
+      outcome: "accepted",
+      detail: {
+        revokedPermission: "screen:view",
+        remainingPermissionCount: 1,
+        finalGrantRevoked: false
+      }
     });
   });
 
@@ -241,10 +337,12 @@ describe("agent shell consent workflow", () => {
 });
 
 async function startRelayAndHost(options: {
+  decisionReason?: string;
   hostDecision?: "none" | "approve" | "deny";
   hostLogger?: TestLogger;
   hostRevokeAfterMs?: number;
   hostRevokePermission?: Permission;
+  hostRevokeReason?: string;
   visibleToHost?: boolean;
 } = {}) {
   const relay = createRelayRuntime({
@@ -267,8 +365,10 @@ async function startRelayAndHost(options: {
     displayName: "Host",
     deviceId: "dev_host_1",
     hostDecision: options.hostDecision ?? "none",
+    decisionReason: options.decisionReason,
     hostRevokeAfterMs: options.hostRevokeAfterMs,
     hostRevokePermission: options.hostRevokePermission,
+    hostRevokeReason: options.hostRevokeReason,
     visibleToHost: options.visibleToHost ?? false,
     logger: options.hostLogger ?? silentLogger,
     onEvent: (event) => hostEvents.push(event)

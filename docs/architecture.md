@@ -86,9 +86,11 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode can send approval or denial only with explicit `--host-decision`.
 - Host mode emits active state only when `--visible-session true` is also provided.
 - Host mode can simulate permission revocation only after explicit visible approval with `--revoke-after-ms` and `--revoke-permission`.
+- Host mode emits development `audit-event` protocol messages for decision, activation, and revocation workflow events.
 - Received message logs contain summaries only, not raw protocol payloads.
 
 This workflow is a protocol simulator, not production host consent UI.
+Development `audit-event` messages are not durable audit persistence.
 
 ## Future Windows Architecture
 

@@ -7,6 +7,7 @@ import {
   encodeProtocolEnvelope,
   PairingCodeSchema,
   PermissionSchema,
+  type AuditOutcome,
   type Permission,
   type ProtocolEnvelope,
   type SessionRole
@@ -235,6 +236,14 @@ function handleHostAuthorizationRequest(
       grantedPermissions: [],
       reason: options.decisionReason ?? "Host denied"
     });
+    sendDevelopmentAuditEvent(socket, options, {
+      action: "agent-shell.authorization.denied",
+      outcome: "denied",
+      detail: {
+        requestedPermissionCount: request.requestedPermissions.length,
+        reasonConfigured: Boolean(options.decisionReason)
+      }
+    });
     return;
   }
 
@@ -249,6 +258,14 @@ function handleHostAuthorizationRequest(
     decision: "approved",
     grantedPermissions: request.requestedPermissions,
     expiresAt
+  });
+  sendDevelopmentAuditEvent(socket, options, {
+    action: "agent-shell.authorization.approved",
+    outcome: "accepted",
+    detail: {
+      requestedPermissionCount: request.requestedPermissions.length,
+      grantedPermissionCount: request.requestedPermissions.length
+    }
   });
 
   if (!options.visibleToHost) {
@@ -265,6 +282,14 @@ function handleHostAuthorizationRequest(
     visibleToHost: true,
     permissions: request.requestedPermissions,
     expiresAt
+  });
+  sendDevelopmentAuditEvent(socket, options, {
+    action: "agent-shell.authorization.active",
+    outcome: "accepted",
+    detail: {
+      grantedPermissionCount: request.requestedPermissions.length,
+      visibleToHost: true
+    }
   });
 
   scheduleHostRevoke(socket, options, request, authorizationId, expiresAt, scheduleTimer);
@@ -325,7 +350,36 @@ function scheduleHostRevoke(
       expiresAt,
       reason
     });
+    sendDevelopmentAuditEvent(socket, options, {
+      action: "agent-shell.permission.revoked",
+      outcome: "accepted",
+      detail: {
+        revokedPermission,
+        remainingPermissionCount: remainingPermissions.length,
+        finalGrantRevoked: remainingPermissions.length === 0
+      }
+    });
   }, options.hostRevokeAfterMs);
+}
+
+function sendDevelopmentAuditEvent(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  input: {
+    action: string;
+    outcome: AuditOutcome;
+    detail: Record<string, unknown>;
+  }
+): void {
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "audit-event",
+    eventId: `audit_${randomUUID()}`,
+    actorPeerId: options.peerId,
+    action: input.action,
+    outcome: input.outcome,
+    detail: input.detail
+  });
 }
 
 function sendProtocol(
