@@ -84,6 +84,7 @@ Production liveness also needs distributed state, reconnect policy, and stale-se
 Peer disconnect notices are lifecycle notifications only. They do not grant permissions, start capture, send input, reconnect peers, or bypass authorization.
 
 The CLI entrypoint and integration tests use the same runtime implementation. Tests start the relay on an ephemeral local port and verify real WebSocket join, forwarding, rejection, disconnect notification, and rate-limit behavior.
+Unexpected relay CLI startup/shutdown errors are printed as metadata-only diagnostics with generic text and message byte length, not raw exception messages or stacks.
 
 Set `WINBRIDGE_RELAY_AUDIT_LOG_PATH` to write relay audit events to a local JSONL file during development.
 Heartbeat defaults are controlled by `WINBRIDGE_RELAY_HEARTBEAT_ENABLED`, `WINBRIDGE_RELAY_HEARTBEAT_INTERVAL_MS`, and `WINBRIDGE_RELAY_HEARTBEAT_TIMEOUT_MS`.
@@ -117,6 +118,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Runtime `error` events and runtime/socket error logs are metadata-only; they expose generic error text and message byte length, not raw exception messages.
 - Received message logs contain summaries only, not raw protocol payloads.
 - CLI argument parsing rejects duplicate requested permissions before sending authorization requests.
+- Unexpected CLI startup/shutdown errors are metadata-only; expected usage errors remain static usage text.
 
 This workflow is a protocol simulator, not production host consent UI.
 Development agent-shell audit files are local development persistence, not production audit storage.

@@ -44,6 +44,8 @@ Pairing ticket TTL and maximum-use configuration is bounded and parsed as exact 
 
 When `WINBRIDGE_RELAY_SHARED_TOKEN` is configured, it must be non-blank and peers without the exact token are rejected before room registration. Omitted token configuration keeps the relay in documented development mode; empty or whitespace-only configured tokens fail before accepting peers.
 
+Unexpected relay CLI startup/shutdown errors are metadata-only and expose generic error text plus safe message-byte diagnostics, not raw exception messages, stacks, tokens, pairing codes, protocol payloads, or local file paths.
+
 Remote actions still require an explicit host-approved active session grant.
 
 ## Session Authorization Lifecycle
@@ -97,6 +99,7 @@ The non-native agent shell can simulate consent messages for development:
 - Local runtime `raw` events for non-protocol inbound text are metadata-only and expose redacted text plus safe byte-length diagnostics.
 - Local runtime `closed` events for WebSocket disconnects are metadata-only and expose redacted reason text plus safe reason-byte diagnostics.
 - Local runtime `error` events and runtime/socket error logs expose generic error text plus safe byte-length diagnostics, not raw exception messages.
+- Unexpected CLI startup/shutdown errors expose generic error text plus safe byte-length diagnostics, while expected usage errors remain static usage text.
 - Received message logs use summaries and must not contain raw protocol payloads or raw non-protocol message text.
 - Workflow timer values are exact integer milliseconds bounded to the safe JavaScript timer delay range before runtime startup.
 

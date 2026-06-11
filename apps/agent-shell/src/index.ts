@@ -1,5 +1,6 @@
 import { FileAuditSink } from "@winbridge/audit-log";
-import { AgentShellUsageError, parseArgs } from "./args.js";
+import { parseArgs } from "./args.js";
+import { reportAgentShellCliError } from "./cli-diagnostics.js";
 import { createAgentShellRuntime } from "./runtime.js";
 
 try {
@@ -17,7 +18,7 @@ try {
     shutdown()
       .then(() => process.exit(0))
       .catch((error) => {
-        console.error(error);
+        reportAgentShellCliError(error);
         process.exit(1);
       });
   });
@@ -26,16 +27,16 @@ try {
     shutdown()
       .then(() => process.exit(0))
       .catch((error) => {
-        console.error(error);
+        reportAgentShellCliError(error);
         process.exit(1);
       });
   });
 
   runtime.start().catch((error) => {
-    console.error(error);
+    reportAgentShellCliError(error);
     process.exit(1);
   });
 } catch (error) {
-  console.error(error instanceof AgentShellUsageError ? error.message : error);
+  reportAgentShellCliError(error);
   process.exit(1);
 }
