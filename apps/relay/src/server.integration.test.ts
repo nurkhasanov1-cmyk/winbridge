@@ -432,6 +432,228 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("peer-closed");
   });
 
+  it("rejects registered join-session replay before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send(joinMessage("session-demo", "host-1", "host", "987-654"));
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Registered peers cannot send join-session messages"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "join-session");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.reason === "Registered peers cannot send join-session messages"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain("987-654");
+  });
+
+  it("rejects peer-originated relay-ready messages before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "relay-ready",
+        peerId: "viewer-1",
+        roomSize: 2
+      })
+    );
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Relay-ready messages are relay-originated"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "relay-ready");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.reason === "Relay-ready messages are relay-originated"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+  });
+
+  it("rejects spoofed sender messages before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "viewer-1",
+        toPeerId: "host-1",
+        payload: {
+          kind: "spoof-marker"
+        }
+      })
+    );
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Message peer identity does not match registered peer"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "signal");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.reason === "Message peer identity does not match registered peer"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain("spoof-marker");
+  });
+
+  it("rejects spoofed actor messages before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-control",
+        actorPeerId: "viewer-1",
+        action: "pause",
+        reason: "actor-spoof-private-reason"
+      })
+    );
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Message peer identity does not match registered peer"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "session-control");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.reason === "Message peer identity does not match registered peer"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain("actor-spoof-private-reason");
+  });
+
+  it("rejects host-sent viewer authorization requests before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "host-1",
+        requestedPermissions: ["screen:view"],
+        reason: "role-mismatch-private-reason"
+      })
+    );
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Message role does not match registered peer"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "session-authorization-request");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.reason === "Message role does not match registered peer"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain("role-mismatch-private-reason");
+  });
+
+  it("rejects viewer-forged host authorization decisions before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    viewer.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-decision",
+        authorizationId: "authz-demo",
+        hostPeerId: "viewer-1",
+        viewerPeerId: "viewer-1",
+        decision: "approved",
+        grantedPermissions: ["screen:view"],
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      })
+    );
+
+    expect(await waitForJsonMessage(viewer, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Message role does not match registered peer"
+    });
+    await expectNoProtocolMessage(host, (message) => message.type === "session-authorization-decision");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.reason === "Message role does not match registered peer"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+  });
+
   it("rejects a viewer before the host creates a pairing ticket", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });

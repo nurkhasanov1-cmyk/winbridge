@@ -146,6 +146,8 @@ Protocol-facing machine identifiers such as session ids, peer ids, message ids, 
 
 `signal` protocol messages are restricted to non-empty, bounded JSON payloads. Payloads containing obvious token, credential, pairing-code, API-key, authorization-header, auth-header, cookie, private-key, keystroke, screenshot, screen-data, screen-content, or secret keys are rejected before forwarding and are not treated as trusted remote-assistance data. Non-secret lifecycle identifiers such as `authorizationId` remain permitted.
 
+After a peer registers, the relay rejects peer messages that attempt to replay `join-session`, forge relay-originated lifecycle messages, spoof another peer's sender or actor id, or use host/viewer role-bound authorization fields from the wrong registered role. Rejections use bounded reasons and do not expose raw pairing codes or protocol payloads to the remaining peer.
+
 Malformed relay messages receive bounded secret-safe rejection reasons such as `Invalid relay message`. Parser details and raw malformed message contents are not returned to peers or stored in invalid-message audit reasons.
 
 Rate-limit audit details are secret-safe:

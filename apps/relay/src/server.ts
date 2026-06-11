@@ -44,7 +44,11 @@ const SAFE_RELAY_REJECTION_REASONS = new Set([
   "Pairing code mismatch",
   "Pairing ticket is expired",
   "Pairing ticket has no remaining uses",
+  "Registered peers cannot send join-session messages",
+  "Relay-ready messages are relay-originated",
   "Message session does not match registered peer",
+  "Message peer identity does not match registered peer",
+  "Message role does not match registered peer",
   "Peer disconnect notices are relay-originated",
   "Signal payload must not be empty",
   "Signal payload must be 16384 bytes or less",
@@ -194,9 +198,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
           throw new Error("Message session does not match registered peer");
         }
 
-        if (envelope.type === "peer-disconnected") {
-          throw new Error("Peer disconnect notices are relay-originated");
-        }
+        assertRegisteredPeerCanForward(envelope, registeredPeer);
 
         for (const peer of rooms.peers(registeredPeer.sessionId, registeredPeer.peerId)) {
           peer.send(encodeProtocolEnvelope(envelope));
@@ -488,6 +490,62 @@ function registerFirstMessage(
   }
 
   return { peer: registeredPeer, result };
+}
+
+function assertRegisteredPeerCanForward(envelope: ProtocolEnvelope, peer: RelayPeer): void {
+  switch (envelope.type) {
+    case "join-session":
+      throw new Error("Registered peers cannot send join-session messages");
+    case "relay-ready":
+      throw new Error("Relay-ready messages are relay-originated");
+    case "peer-disconnected":
+      throw new Error("Peer disconnect notices are relay-originated");
+    case "hello":
+      assertEnvelopePeer(envelope.peerId, peer);
+      assertEnvelopeRole(envelope.role, peer);
+      return;
+    case "host-consent-required":
+      assertEnvelopeRole("viewer", peer);
+      assertEnvelopePeer(envelope.viewerPeerId, peer);
+      return;
+    case "host-consent-decision":
+      assertEnvelopeRole("host", peer);
+      assertEnvelopePeer(envelope.hostPeerId, peer);
+      return;
+    case "session-authorization-request":
+      assertEnvelopeRole("viewer", peer);
+      assertEnvelopePeer(envelope.viewerPeerId, peer);
+      return;
+    case "session-authorization-decision":
+      assertEnvelopeRole("host", peer);
+      assertEnvelopePeer(envelope.hostPeerId, peer);
+      return;
+    case "signal":
+      assertEnvelopePeer(envelope.fromPeerId, peer);
+      return;
+    case "session-authorization-state":
+    case "permission-revoked":
+    case "session-control":
+    case "audit-event":
+      assertEnvelopePeer(envelope.actorPeerId, peer);
+      return;
+    default: {
+      const exhaustive: never = envelope;
+      return exhaustive;
+    }
+  }
+}
+
+function assertEnvelopePeer(peerId: string, peer: RelayPeer): void {
+  if (peerId !== peer.peerId) {
+    throw new Error("Message peer identity does not match registered peer");
+  }
+}
+
+function assertEnvelopeRole(role: RelayPeer["role"], peer: RelayPeer): void {
+  if (role !== peer.role) {
+    throw new Error("Message role does not match registered peer");
+  }
 }
 
 function rateLimitAuditDetail(decision: RateLimitDecision) {
