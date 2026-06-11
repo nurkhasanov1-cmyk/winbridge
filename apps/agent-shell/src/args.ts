@@ -60,6 +60,7 @@ const knownOptions = new Set([
   "terminate-after-ms",
   "terminate-reason"
 ]);
+const MAX_CLI_REASON_LENGTH = 240;
 
 export class AgentShellUsageError extends Error {
   constructor() {
@@ -100,13 +101,13 @@ export function parseArgs(
     authorizationTtlMs: parseOptionalNonNegativeInteger(options.get("authorization-ttl-ms")),
     hostRevokeAfterMs: parseOptionalNonNegativeInteger(options.get("revoke-after-ms")),
     hostRevokePermission: parseOptionalPermission(options.get("revoke-permission")),
-    hostRevokeReason: options.get("revoke-reason"),
+    hostRevokeReason: parseOptionalReason(options.get("revoke-reason")),
     hostPauseAfterMs: parseOptionalNonNegativeInteger(options.get("pause-after-ms")),
-    hostPauseReason: options.get("pause-reason"),
+    hostPauseReason: parseOptionalReason(options.get("pause-reason")),
     hostResumeAfterMs: parseOptionalNonNegativeInteger(options.get("resume-after-ms")),
-    hostResumeReason: options.get("resume-reason"),
+    hostResumeReason: parseOptionalReason(options.get("resume-reason")),
     hostTerminateAfterMs: parseOptionalNonNegativeInteger(options.get("terminate-after-ms")),
-    hostTerminateReason: options.get("terminate-reason")
+    hostTerminateReason: parseOptionalReason(options.get("terminate-reason"))
   };
 }
 
@@ -210,6 +211,18 @@ function parseOptionalPermission(raw: string | undefined): Permission | undefine
   } catch {
     throw new AgentShellUsageError();
   }
+}
+
+function parseOptionalReason(raw: string | undefined): string | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  if (raw.trim().length === 0 || raw.length > MAX_CLI_REASON_LENGTH) {
+    throw new AgentShellUsageError();
+  }
+
+  return raw;
 }
 
 function parseOptionalNonNegativeInteger(raw: string | undefined): number | undefined {

@@ -29,6 +29,10 @@ The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments befo
 - **WHEN** the agent shell is started with a malformed `--session`, `--peer`, or `--device` identifier
 - **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
 
+#### Scenario: Invalid lifecycle reason option is rejected
+- **WHEN** the agent shell is started with a blank or oversized lifecycle reason option
+- **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
+
 #### Scenario: Valid omitted options keep safe defaults
 - **WHEN** the agent shell is started with only a valid role
 - **THEN** omitted consent-sensitive options keep fail-closed defaults such as no requested permissions, no host decision, and no visible session

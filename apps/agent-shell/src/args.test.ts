@@ -66,6 +66,17 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects malformed lifecycle reason values", () => {
+    for (const option of ["revoke-reason", "pause-reason", "resume-reason", "terminate-reason"]) {
+      expect(() => parseArgs(["host", `--${option}`, "   "], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+      expect(() => parseArgs(["host", `--${option}`, "x".repeat(241)], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+    }
+  });
+
   it("parses valid workflow options", () => {
     const args = parseArgs(
       [
@@ -79,7 +90,15 @@ describe("agent shell arguments", () => {
         "--authorization-ttl-ms",
         "600000",
         "--revoke-permission",
-        "input:pointer"
+        "input:pointer",
+        "--revoke-reason",
+        "Host revoked pointer",
+        "--pause-reason",
+        "Host paused",
+        "--resume-reason",
+        "Host resumed",
+        "--terminate-reason",
+        "Host terminated"
       ],
       { WINBRIDGE_AGENT_AUDIT_LOG_PATH: "logs/audit.jsonl" },
       42
@@ -91,7 +110,11 @@ describe("agent shell arguments", () => {
       hostDecision: "approve",
       visibleToHost: true,
       authorizationTtlMs: 600000,
-      hostRevokePermission: "input:pointer"
+      hostRevokePermission: "input:pointer",
+      hostRevokeReason: "Host revoked pointer",
+      hostPauseReason: "Host paused",
+      hostResumeReason: "Host resumed",
+      hostTerminateReason: "Host terminated"
     });
   });
 });
