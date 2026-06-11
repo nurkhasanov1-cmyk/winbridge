@@ -39,7 +39,15 @@ export class ConsoleAuditSink implements AuditSink {
 }
 
 export class FileAuditSink implements AuditSink {
-  constructor(private readonly path: string) {}
+  private readonly path: string;
+
+  constructor(path: string) {
+    if (path.trim().length === 0) {
+      throw new Error("Audit log path must not be blank");
+    }
+
+    this.path = path;
+  }
 
   write(input: AuditRecordInput): AuditRecord {
     const record = createAuditRecord(input);

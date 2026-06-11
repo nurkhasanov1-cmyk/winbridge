@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemoryAuditSink } from "@winbridge/audit-log";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createRelayAuditSink, writeRelayAudit } from "./audit.js";
 
 describe("relay audit", () => {
@@ -59,6 +59,34 @@ describe("relay audit", () => {
       });
     } finally {
       rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("uses console audit output when WINBRIDGE_RELAY_AUDIT_LOG_PATH is omitted", () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const sink = createRelayAuditSink({});
+
+    try {
+      writeRelayAudit(sink, {
+        action: "relay.peer.join.accepted",
+        outcome: "accepted",
+        sessionId: "session-demo",
+        peerId: "host-1"
+      });
+
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining("[winbridge-audit]"));
+    } finally {
+      consoleLog.mockRestore();
+    }
+  });
+
+  it("rejects blank WINBRIDGE_RELAY_AUDIT_LOG_PATH values", () => {
+    for (const auditLogPath of ["", "   "]) {
+      expect(() =>
+        createRelayAuditSink({
+          WINBRIDGE_RELAY_AUDIT_LOG_PATH: auditLogPath
+        })
+      ).toThrow("WINBRIDGE_RELAY_AUDIT_LOG_PATH must not be blank");
     }
   });
 });

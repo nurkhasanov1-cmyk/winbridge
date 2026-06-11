@@ -94,6 +94,27 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("parses valid audit log paths", () => {
+    expect(parseArgs(["host", "--audit-log", "logs/agent-audit.jsonl"], {}, 42).auditLogPath).toBe(
+      "logs/agent-audit.jsonl"
+    );
+    expect(
+      parseArgs(["host"], { WINBRIDGE_AGENT_AUDIT_LOG_PATH: "logs/env-audit.jsonl" }, 42)
+        .auditLogPath
+    ).toBe("logs/env-audit.jsonl");
+  });
+
+  it("rejects blank audit log paths", () => {
+    for (const auditLogPath of ["", "   "]) {
+      expect(() => parseArgs(["host", "--audit-log", auditLogPath], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+      expect(() =>
+        parseArgs(["host"], { WINBRIDGE_AGENT_AUDIT_LOG_PATH: auditLogPath }, 42)
+      ).toThrow(AgentShellUsageError);
+    }
+  });
+
   it("parses valid workflow options", () => {
     const args = parseArgs(
       [

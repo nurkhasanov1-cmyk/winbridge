@@ -94,7 +94,9 @@ export function parseArgs(
     displayName: options.get("name") ?? `${role} ${processId}`,
     token: options.get("token"),
     deviceId: parseProtocolIdentifier(options.get("device") ?? `dev_${role}_${processId}`),
-    auditLogPath: options.get("audit-log") ?? env.WINBRIDGE_AGENT_AUDIT_LOG_PATH,
+    auditLogPath: parseOptionalAuditLogPath(
+      options.get("audit-log") ?? env.WINBRIDGE_AGENT_AUDIT_LOG_PATH
+    ),
     requestedPermissions: parseRequestedPermissions(options.get("request")),
     hostDecision: parseHostDecision(options.get("host-decision")),
     visibleToHost: parseVisibleSession(options.get("visible-session")),
@@ -235,6 +237,18 @@ function parseOptionalReason(raw: string | undefined): string | undefined {
   }
 
   if (raw.trim().length === 0 || raw.length > MAX_CLI_REASON_LENGTH) {
+    throw new AgentShellUsageError();
+  }
+
+  return raw;
+}
+
+function parseOptionalAuditLogPath(raw: string | undefined): string | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  if (raw.trim().length === 0) {
     throw new AgentShellUsageError();
   }
 

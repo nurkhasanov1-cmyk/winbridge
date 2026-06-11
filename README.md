@@ -78,6 +78,8 @@ $env:WINBRIDGE_RELAY_AUDIT_LOG_PATH = "logs\\relay-audit.jsonl"
 npm run dev:relay
 ```
 
+Omit `WINBRIDGE_RELAY_AUDIT_LOG_PATH` to keep console audit output. Do not set it to an empty or whitespace-only value.
+
 Development relay heartbeat is enabled by default. For local tuning:
 
 ```powershell
@@ -132,6 +134,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 ```
 
 The same path can be passed with `--audit-log logs\\agent-audit.jsonl`. Agent audit files record only secret-safe workflow audit metadata; they do not store raw protocol payloads, screen contents, input, or private reason text.
+Omit `WINBRIDGE_AGENT_AUDIT_LOG_PATH` and `--audit-log` to skip local agent audit file persistence. Do not set either audit path to an empty or whitespace-only value.
 
 Use a short development authorization TTL:
 

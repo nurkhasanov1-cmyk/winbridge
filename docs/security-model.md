@@ -172,6 +172,8 @@ The relay can write local development audit records to JSONL when `WINBRIDGE_REL
 
 The agent shell can write local host workflow audit records to JSONL when `WINBRIDGE_AGENT_AUDIT_LOG_PATH` or `--audit-log` is configured.
 
+Configured relay or agent audit file paths must be non-blank. Omitted audit paths keep the documented development fallback behavior, but empty or whitespace-only configured paths fail before relay peer acceptance or agent runtime startup.
+
 File audit records use the same schema validation and redaction as memory and console sinks. Write failures are surfaced to the caller instead of silently dropping records.
 
 Development audit files must not contain raw tokens, raw pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets.

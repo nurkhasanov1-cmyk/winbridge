@@ -90,6 +90,12 @@ describe("ConsoleAuditSink", () => {
 });
 
 describe("FileAuditSink", () => {
+  it("rejects blank paths before writing records", () => {
+    for (const path of ["", "   "]) {
+      expect(() => new FileAuditSink(path)).toThrow("Audit log path must not be blank");
+    }
+  });
+
   it("writes JSONL records in write order and creates parent directories", () => {
     const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
     const path = join(root, "nested", "audit.jsonl");
