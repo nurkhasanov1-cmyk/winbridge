@@ -1,27 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { ProtocolIdentifierSchema, SessionIdSchema } from "./session.js";
 
 export const AuditOutcomeSchema = z.enum(["accepted", "denied", "failed"]);
 export type AuditOutcome = z.infer<typeof AuditOutcomeSchema>;
 
 export const AuditActorSchema = z.object({
   type: z.enum(["system", "relay", "host", "viewer"]),
-  id: z.string().min(1),
-  deviceId: z.string().min(8).max(128).optional()
+  id: ProtocolIdentifierSchema,
+  deviceId: ProtocolIdentifierSchema.min(8).optional()
 });
 export type AuditActor = z.infer<typeof AuditActorSchema>;
 
 export const AuditRecordSchema = z.object({
-  eventId: z.string().min(8),
+  eventId: ProtocolIdentifierSchema.min(8),
   timestamp: z.string().datetime(),
   actor: AuditActorSchema,
   action: z.string().min(1).max(160),
   outcome: AuditOutcomeSchema,
-  sessionId: z.string().min(3).optional(),
+  sessionId: SessionIdSchema.optional(),
   target: z
     .object({
       type: z.string().min(1).max(80),
-      id: z.string().min(1).max(160)
+      id: ProtocolIdentifierSchema
     })
     .optional(),
   reason: z.string().min(1).max(240).optional(),

@@ -169,6 +169,63 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("join-session");
   });
 
+  it("accepts current development protocol identifiers", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      messageId: "msg_123e4567-e89b-12d3-a456-426614174000",
+      type: "session-authorization-state",
+      authorizationId: "authz_123e4567-e89b-12d3-a456-426614174000",
+      actorPeerId: "host-1",
+      status: "active",
+      visibleToHost: true,
+      permissions: ["screen:view"],
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+
+    expect(parsed).toMatchObject({
+      type: "session-authorization-state",
+      sessionId: "session-demo",
+      authorizationId: "authz_123e4567-e89b-12d3-a456-426614174000",
+      actorPeerId: "host-1"
+    });
+  });
+
+  it("rejects oversized protocol identifiers", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("s".repeat(129)),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName: "Host",
+        capabilities: ["session:visible"]
+      })
+    ).toThrow();
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "relay-ready",
+        peerId: "p".repeat(129),
+        roomSize: 1
+      })
+    ).toThrow();
+  });
+
+  it("rejects unsafe protocol identifier characters", () => {
+    for (const peerId of ["host 1", "host\n1", "../host-1", "{host-1}"]) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId,
+          role: "host",
+          displayName: "Host",
+          capabilities: ["session:visible"]
+        })
+      ).toThrow();
+    }
+  });
+
   it("accepts valid legacy host consent request and decision messages", () => {
     const request = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),
@@ -843,5 +900,32 @@ describe("session grants", () => {
         auditId: "audit-demo"
       })
     ).toThrow("expired");
+  });
+
+  it("rejects session grants with malformed identifiers", () => {
+    expect(() =>
+      assertConsentBoundGrant({
+        sessionId: "session demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        permissions: ["screen:view"],
+        requiresHostApproval: true,
+        visibleSessionRequired: true,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        auditId: "audit-demo"
+      })
+    ).toThrow();
+    expect(() =>
+      assertConsentBoundGrant({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        permissions: ["screen:view"],
+        requiresHostApproval: true,
+        visibleSessionRequired: true,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        auditId: "a".repeat(129)
+      })
+    ).toThrow();
   });
 });

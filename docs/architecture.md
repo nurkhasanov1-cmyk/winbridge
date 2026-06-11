@@ -32,6 +32,7 @@ Owns shared schemas for:
 - Audit events.
 
 The protocol package is the compatibility contract between host, viewer, relay, and future native adapters.
+Protocol-facing machine identifiers are bounded and restricted to a safe printable profile before they can be used in relay state, authorization records, pairing records, or audit-related protocol metadata.
 
 Preferred future clients should use the session authorization protocol messages for consent-bound lifecycle work:
 
@@ -66,6 +67,7 @@ Provides a development WebSocket relay:
 - Optionally enforces a shared development token.
 - Limits a room to one host and one viewer.
 - Validates protocol envelopes before forwarding.
+- Rejects malformed protocol identifiers before relay room registration.
 - Bounds raw WebSocket message size before protocol decoding.
 - Rejects empty, oversized, or sensitive-key `signal` payloads before forwarding.
 - Normalizes malformed-message `relay-error` and invalid-message audit reasons to bounded secret-safe strings.

@@ -25,6 +25,48 @@ describe("audit records", () => {
     ).toThrow();
   });
 
+  it("rejects audit records with malformed identifiers", () => {
+    expect(() =>
+      createAuditRecord({
+        eventId: "audit with spaces",
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.peer.join.accepted",
+        outcome: "accepted"
+      })
+    ).toThrow();
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay dev" },
+        action: "relay.peer.join.accepted",
+        outcome: "accepted"
+      })
+    ).toThrow();
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "host", id: "host-1", deviceId: "dev/host/1" },
+        action: "agent-shell.authorization.approved",
+        outcome: "accepted",
+        sessionId: "session-demo"
+      })
+    ).toThrow();
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.peer.join.accepted",
+        outcome: "accepted",
+        sessionId: "session demo"
+      })
+    ).toThrow();
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.peer.join.accepted",
+        outcome: "accepted",
+        target: { type: "peer", id: "viewer\n1" }
+      })
+    ).toThrow();
+  });
+
   it("redacts sensitive audit detail fields", () => {
     const redacted = redactAuditDetail({
       token: "secret-token",

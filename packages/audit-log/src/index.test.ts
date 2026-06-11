@@ -32,6 +32,14 @@ describe("MemoryAuditSink", () => {
         outcome: "failed"
       })
     ).toThrow();
+    expect(() =>
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "invalid",
+        outcome: "failed",
+        sessionId: "session with spaces"
+      })
+    ).toThrow();
     expect(sink.records()).toHaveLength(0);
   });
 

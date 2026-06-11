@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { PermissionSchema, type Permission } from "./session.js";
+import { PeerIdSchema, PermissionSchema, type Permission, ProtocolIdentifierSchema, SessionIdSchema } from "./session.js";
 
 export const SessionAuthorizationStatusSchema = z.enum([
   "pending",
@@ -22,10 +22,10 @@ const AuthorizationReasonSchema = z
   .refine((reason) => reason.trim().length > 0, "Authorization reason must not be blank");
 
 const SessionAuthorizationBaseSchema = z.object({
-  authorizationId: z.string().min(8),
-  sessionId: z.string().min(3),
-  hostPeerId: z.string().min(3),
-  viewerPeerId: z.string().min(3),
+  authorizationId: ProtocolIdentifierSchema.min(8),
+  sessionId: SessionIdSchema,
+  hostPeerId: PeerIdSchema,
+  viewerPeerId: PeerIdSchema,
   status: SessionAuthorizationStatusSchema,
   permissions: z.array(PermissionSchema).max(16),
   visibleToHost: z.boolean(),

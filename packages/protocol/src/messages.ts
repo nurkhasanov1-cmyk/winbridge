@@ -4,7 +4,14 @@ import { z } from "zod";
 import { AuditOutcomeSchema, redactAuditDetail } from "./audit.js";
 import { SessionAuthorizationStatusSchema } from "./authorization.js";
 import { DeviceIdentitySchema } from "./identity.js";
-import { PairingCodeSchema, PermissionSchema, SessionRoleSchema } from "./session.js";
+import {
+  PairingCodeSchema,
+  PeerIdSchema,
+  PermissionSchema,
+  ProtocolIdentifierSchema,
+  SessionIdSchema,
+  SessionRoleSchema
+} from "./session.js";
 
 export const PROTOCOL_VERSION = 1;
 const MAX_SIGNAL_PAYLOAD_BYTES = 16 * 1024;
@@ -23,8 +30,8 @@ const SENSITIVE_SIGNAL_PAYLOAD_KEY_INDICATORS = [
 
 const BaseMessageSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),
-  messageId: z.string().min(3),
-  sessionId: z.string().min(3),
+  messageId: ProtocolIdentifierSchema,
+  sessionId: SessionIdSchema,
   createdAt: z.string().datetime()
 });
 const ProtocolReasonSchema = z
@@ -35,7 +42,7 @@ const ProtocolReasonSchema = z
 
 export const HelloMessageSchema = BaseMessageSchema.extend({
   type: z.literal("hello"),
-  peerId: z.string().min(3),
+  peerId: PeerIdSchema,
   role: SessionRoleSchema,
   displayName: z.string().min(1).max(120),
   capabilities: z.array(z.string().min(1).max(80)).max(32)
@@ -43,7 +50,7 @@ export const HelloMessageSchema = BaseMessageSchema.extend({
 
 export const JoinSessionMessageSchema = BaseMessageSchema.extend({
   type: z.literal("join-session"),
-  peerId: z.string().min(3),
+  peerId: PeerIdSchema,
   role: SessionRoleSchema,
   pairingCode: PairingCodeSchema,
   deviceIdentity: DeviceIdentitySchema.optional()
@@ -51,7 +58,7 @@ export const JoinSessionMessageSchema = BaseMessageSchema.extend({
 
 export const HostConsentRequiredMessageSchema = BaseMessageSchema.extend({
   type: z.literal("host-consent-required"),
-  viewerPeerId: z.string().min(3),
+  viewerPeerId: PeerIdSchema,
   viewerDisplayName: z.string().min(1).max(120),
   requestedPermissions: z.array(PermissionSchema).min(1).max(16)
 }).superRefine((message, context) => {
@@ -60,8 +67,8 @@ export const HostConsentRequiredMessageSchema = BaseMessageSchema.extend({
 
 export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
   type: z.literal("host-consent-decision"),
-  hostPeerId: z.string().min(3),
-  viewerPeerId: z.string().min(3),
+  hostPeerId: PeerIdSchema,
+  viewerPeerId: PeerIdSchema,
   approved: z.boolean(),
   grantedPermissions: z.array(PermissionSchema).max(16),
   reason: ProtocolReasonSchema.optional()
@@ -95,7 +102,7 @@ export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
 
 export const SessionAuthorizationRequestMessageSchema = BaseMessageSchema.extend({
   type: z.literal("session-authorization-request"),
-  viewerPeerId: z.string().min(3),
+  viewerPeerId: PeerIdSchema,
   requestedPermissions: z.array(PermissionSchema).min(1).max(16),
   reason: ProtocolReasonSchema.optional()
 }).superRefine((message, context) => {
@@ -104,9 +111,9 @@ export const SessionAuthorizationRequestMessageSchema = BaseMessageSchema.extend
 
 export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.extend({
   type: z.literal("session-authorization-decision"),
-  authorizationId: z.string().min(8),
-  hostPeerId: z.string().min(3),
-  viewerPeerId: z.string().min(3),
+  authorizationId: ProtocolIdentifierSchema.min(8),
+  hostPeerId: PeerIdSchema,
+  viewerPeerId: PeerIdSchema,
   decision: z.enum(["approved", "denied"]),
   grantedPermissions: z.array(PermissionSchema).max(16),
   expiresAt: z.string().datetime().optional(),
@@ -149,8 +156,8 @@ export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.exten
 
 export const SessionAuthorizationStateMessageSchema = BaseMessageSchema.extend({
   type: z.literal("session-authorization-state"),
-  authorizationId: z.string().min(8),
-  actorPeerId: z.string().min(3),
+  authorizationId: ProtocolIdentifierSchema.min(8),
+  actorPeerId: PeerIdSchema,
   status: SessionAuthorizationStatusSchema,
   visibleToHost: z.boolean(),
   permissions: z.array(PermissionSchema).max(16),
@@ -189,15 +196,15 @@ export const SessionAuthorizationStateMessageSchema = BaseMessageSchema.extend({
 
 export const PermissionRevokedMessageSchema = BaseMessageSchema.extend({
   type: z.literal("permission-revoked"),
-  authorizationId: z.string().min(8),
-  actorPeerId: z.string().min(3),
+  authorizationId: ProtocolIdentifierSchema.min(8),
+  actorPeerId: PeerIdSchema,
   revokedPermission: PermissionSchema,
   reason: ProtocolReasonSchema
 });
 
 export const RelayReadyMessageSchema = BaseMessageSchema.extend({
   type: z.literal("relay-ready"),
-  peerId: z.string().min(3),
+  peerId: PeerIdSchema,
   roomSize: z.number().int().min(1).max(2)
 });
 
@@ -205,15 +212,15 @@ export const PeerDisconnectedReasonCodeSchema = z.enum(["peer-closed"]);
 
 export const PeerDisconnectedMessageSchema = BaseMessageSchema.extend({
   type: z.literal("peer-disconnected"),
-  peerId: z.string().min(3),
+  peerId: PeerIdSchema,
   role: SessionRoleSchema,
   reasonCode: PeerDisconnectedReasonCodeSchema
 });
 
 export const SignalMessageSchema = BaseMessageSchema.extend({
   type: z.literal("signal"),
-  fromPeerId: z.string().min(3),
-  toPeerId: z.string().min(3).optional(),
+  fromPeerId: PeerIdSchema,
+  toPeerId: PeerIdSchema.optional(),
   payload: z.record(z.unknown())
 }).superRefine((message, context) => {
   if (Object.keys(message.payload).length === 0) {
@@ -245,7 +252,7 @@ export const SignalMessageSchema = BaseMessageSchema.extend({
 
 export const SessionControlMessageSchema = BaseMessageSchema.extend({
   type: z.literal("session-control"),
-  actorPeerId: z.string().min(3),
+  actorPeerId: PeerIdSchema,
   action: z.enum(["pause", "resume", "terminate", "revoke-permission"]),
   permission: PermissionSchema.optional(),
   reason: ProtocolReasonSchema.optional()
@@ -270,8 +277,8 @@ export const SessionControlMessageSchema = BaseMessageSchema.extend({
 
 export const AuditEventMessageSchema = BaseMessageSchema.extend({
   type: z.literal("audit-event"),
-  eventId: z.string().min(3),
-  actorPeerId: z.string().min(3),
+  eventId: ProtocolIdentifierSchema,
+  actorPeerId: PeerIdSchema,
   action: z.string().min(1).max(120),
   outcome: AuditOutcomeSchema,
   detail: z.record(z.unknown()).default({}).transform(redactAuditDetail)

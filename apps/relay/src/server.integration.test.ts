@@ -189,6 +189,102 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("not-json");
   });
 
+  it("rejects malformed join identifiers without reflecting them", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const cases: Array<{
+      name: string;
+      unsafeValue: string;
+      buildMessage: () => Record<string, unknown>;
+    }> = [
+      {
+        name: "session id",
+        unsafeValue: "session secret-token 123-456",
+        buildMessage: () => ({
+          ...createMessageBase("session secret-token 123-456"),
+          type: "join-session",
+          peerId: "viewer-1",
+          role: "viewer",
+          pairingCode: "123-456"
+        })
+      },
+      {
+        name: "message id",
+        unsafeValue: "message secret-token 123-456",
+        buildMessage: () => ({
+          ...createMessageBase("session-demo"),
+          messageId: "message secret-token 123-456",
+          type: "join-session",
+          peerId: "viewer-1",
+          role: "viewer",
+          pairingCode: "123-456"
+        })
+      },
+      {
+        name: "peer id",
+        unsafeValue: "viewer secret-token 123-456",
+        buildMessage: () => ({
+          ...createMessageBase("session-demo"),
+          type: "join-session",
+          peerId: "viewer secret-token 123-456",
+          role: "viewer",
+          pairingCode: "123-456"
+        })
+      },
+      {
+        name: "device id",
+        unsafeValue: "device secret-token 123-456",
+        buildMessage: () => ({
+          ...createMessageBase("session-demo"),
+          type: "join-session",
+          peerId: "viewer-1",
+          role: "viewer",
+          pairingCode: "123-456",
+          deviceIdentity: {
+            deviceId: "device secret-token 123-456",
+            displayName: "Viewer laptop",
+            platform: "windows",
+            trustLevel: "local-dev",
+            createdAt: new Date().toISOString()
+          }
+        })
+      }
+    ];
+
+    for (const { buildMessage, name, unsafeValue } of cases) {
+      const socket = await openSocket(runtime.url());
+      const auditStart = auditSink.records().length;
+
+      socket.send(JSON.stringify(buildMessage()));
+
+      expect(
+        await waitForJsonMessage(socket, (message) => message.type === "relay-error")
+      ).toEqual({
+        type: "relay-error",
+        reason: "Invalid relay message"
+      });
+
+      const rejected = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message",
+        auditStart
+      );
+      expect(rejected, name).toMatchObject({
+        action: "relay.message.rejected",
+        outcome: "failed",
+        detail: {
+          registered: false
+        }
+      });
+      expect(JSON.stringify(rejected), name).not.toContain(unsafeValue);
+      expect(JSON.stringify(rejected), name).not.toContain("secret-token");
+      expect(JSON.stringify(rejected), name).not.toContain("123-456");
+      socket.close();
+    }
+
+    expect(auditSink.records().some((record) => record.action === "relay.peer.join.accepted")).toBe(false);
+  });
+
   it("notifies the viewer when the host disconnects", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
@@ -623,12 +719,13 @@ function expectNoProtocolMessage(
 
 function waitForAuditRecord(
   auditSink: MemoryAuditSink,
-  predicate: (record: AuditRecord) => boolean
+  predicate: (record: AuditRecord) => boolean,
+  startIndex = 0
 ): Promise<AuditRecord> {
   return withTimeout(
     new Promise((resolve) => {
       const poll = () => {
-        const record = auditSink.records().find(predicate);
+        const record = auditSink.records().slice(startIndex).find(predicate);
 
         if (record) {
           resolve(record);

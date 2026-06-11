@@ -4,6 +4,20 @@ import { z } from "zod";
 export const SessionRoleSchema = z.enum(["host", "viewer"]);
 export type SessionRole = z.infer<typeof SessionRoleSchema>;
 
+export const PROTOCOL_IDENTIFIER_MAX_LENGTH = 128;
+const PROTOCOL_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+
+export const ProtocolIdentifierSchema = z
+  .string()
+  .min(3)
+  .max(PROTOCOL_IDENTIFIER_MAX_LENGTH)
+  .regex(
+    PROTOCOL_IDENTIFIER_PATTERN,
+    "Protocol identifier must start with a letter or number and contain only letters, numbers, dot, underscore, colon, or hyphen"
+  );
+export const SessionIdSchema = ProtocolIdentifierSchema;
+export const PeerIdSchema = ProtocolIdentifierSchema;
+
 export const PermissionSchema = z.enum([
   "screen:view",
   "input:pointer",
@@ -15,14 +29,14 @@ export const PermissionSchema = z.enum([
 export type Permission = z.infer<typeof PermissionSchema>;
 
 export const SessionGrantSchema = z.object({
-  sessionId: z.string().min(3),
-  hostPeerId: z.string().min(3),
-  viewerPeerId: z.string().min(3),
+  sessionId: SessionIdSchema,
+  hostPeerId: PeerIdSchema,
+  viewerPeerId: PeerIdSchema,
   permissions: z.array(PermissionSchema).max(16),
   requiresHostApproval: z.literal(true),
   visibleSessionRequired: z.literal(true),
   expiresAt: z.string().datetime(),
-  auditId: z.string().min(3)
+  auditId: ProtocolIdentifierSchema
 });
 export type SessionGrant = z.infer<typeof SessionGrantSchema>;
 

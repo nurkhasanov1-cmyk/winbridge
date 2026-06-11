@@ -1,12 +1,19 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { PairingCodeSchema, PermissionSchema, type Permission, SessionGrantSchema } from "./session.js";
+import {
+  PairingCodeSchema,
+  PermissionSchema,
+  type Permission,
+  ProtocolIdentifierSchema,
+  SessionGrantSchema,
+  SessionIdSchema
+} from "./session.js";
 
 export const DeviceTrustLevelSchema = z.enum(["unknown", "local-dev", "verified"]);
 export type DeviceTrustLevel = z.infer<typeof DeviceTrustLevelSchema>;
 
 export const DeviceIdentitySchema = z.object({
-  deviceId: z.string().min(8).max(128),
+  deviceId: ProtocolIdentifierSchema.min(8),
   displayName: z.string().min(1).max(120),
   platform: z.enum(["windows", "linux", "macos", "unknown"]),
   trustLevel: DeviceTrustLevelSchema,
@@ -15,9 +22,9 @@ export const DeviceIdentitySchema = z.object({
 export type DeviceIdentity = z.infer<typeof DeviceIdentitySchema>;
 
 export const PairingTicketSchema = z.object({
-  pairingId: z.string().min(8),
-  sessionId: z.string().min(3),
-  hostDeviceId: z.string().min(8).max(128),
+  pairingId: ProtocolIdentifierSchema.min(8),
+  sessionId: SessionIdSchema,
+  hostDeviceId: ProtocolIdentifierSchema.min(8),
   pairingCodeSalt: z.string().regex(/^salt:[a-f0-9]{32}$/),
   pairingCodeHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   createdAt: z.string().datetime(),
@@ -27,10 +34,10 @@ export const PairingTicketSchema = z.object({
 export type PairingTicket = z.infer<typeof PairingTicketSchema>;
 
 export const PairedDeviceSchema = z.object({
-  pairingId: z.string().min(8),
-  sessionId: z.string().min(3),
-  hostDeviceId: z.string().min(8).max(128),
-  viewerDeviceId: z.string().min(8).max(128),
+  pairingId: ProtocolIdentifierSchema.min(8),
+  sessionId: SessionIdSchema,
+  hostDeviceId: ProtocolIdentifierSchema.min(8),
+  viewerDeviceId: ProtocolIdentifierSchema.min(8),
   pairedAt: z.string().datetime()
 });
 export type PairedDevice = z.infer<typeof PairedDeviceSchema>;

@@ -23,6 +23,23 @@ describe("device identity", () => {
       trustLevel: "local-dev"
     });
   });
+
+  it("rejects malformed local device identifiers", () => {
+    expect(() =>
+      createDeviceIdentity({
+        displayName: "Host workstation",
+        platform: "windows",
+        deviceId: "dev host 1"
+      })
+    ).toThrow();
+    expect(() =>
+      createDeviceIdentity({
+        displayName: "Host workstation",
+        platform: "windows",
+        deviceId: "d".repeat(129)
+      })
+    ).toThrow();
+  });
 });
 
 describe("pairing tickets", () => {
@@ -39,6 +56,37 @@ describe("pairing tickets", () => {
     expect(ticket.pairingCodeSalt).toBe(pairingCodeSalt);
     expect(ticket.pairingCodeHash).toBe(hashPairingCode("123-456", pairingCodeSalt));
     expect(JSON.stringify(ticket)).not.toContain("123-456");
+  });
+
+  it("rejects pairing records with malformed identifiers", () => {
+    expect(() =>
+      createPairingTicket({
+        sessionId: "session demo",
+        hostDeviceId: "dev_host_1",
+        pairingCode: "123-456"
+      })
+    ).toThrow();
+    expect(() =>
+      createPairingTicket({
+        sessionId: "session-demo",
+        hostDeviceId: "dev_host_1",
+        pairingCode: "123-456",
+        pairingId: "p".repeat(129)
+      })
+    ).toThrow();
+
+    const ticket = createPairingTicket({
+      sessionId: "session-demo",
+      hostDeviceId: "dev_host_1",
+      pairingCode: "123-456"
+    });
+
+    expect(() =>
+      createPairedDevice({
+        ticket,
+        viewerDeviceId: "viewer/1"
+      })
+    ).toThrow();
   });
 
   it("creates distinct salts and hashes for the same pairing code", () => {

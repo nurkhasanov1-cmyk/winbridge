@@ -13,6 +13,7 @@ import {
   terminateSessionAuthorization
 } from "./authorization.js";
 import { createPairingTicket, createPairedDevice } from "./identity.js";
+import { assertConsentBoundGrant } from "./session.js";
 
 const baseTime = new Date("2026-06-11T00:00:00.000Z");
 
@@ -142,6 +143,45 @@ describe("session authorization state machine", () => {
         now: baseTime
       })
     ).toThrow("unique");
+  });
+
+  it("rejects authorization records and grants with malformed identifiers", () => {
+    expect(() =>
+      createPendingSessionAuthorization({
+        sessionId: "session demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view"],
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "v".repeat(129),
+        requestedPermissions: ["screen:view"],
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...pending(),
+        authorizationId: "authz/unsafe"
+      })
+    ).toThrow();
+    expect(() =>
+      assertConsentBoundGrant({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        permissions: ["screen:view"],
+        requiresHostApproval: true,
+        visibleSessionRequired: true,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        auditId: "audit demo"
+      })
+    ).toThrow();
   });
 
   it("rejects malformed authorization records at schema parse time", () => {
