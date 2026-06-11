@@ -142,6 +142,7 @@ This is not production abuse protection. Production relay design must use durabl
 ## Development Relay Heartbeat
 
 The development relay sends WebSocket heartbeat pings and terminates peers that miss the configured heartbeat timeout.
+Heartbeat interval and timeout configuration uses exact bounded integer milliseconds; malformed, partial, zero, or timer-unsafe values fail before the relay accepts peers.
 
 Heartbeat timeout audit details are secret-safe:
 

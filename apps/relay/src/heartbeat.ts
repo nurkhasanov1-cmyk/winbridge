@@ -13,6 +13,7 @@ export type RelayHeartbeatState = {
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MAX_HEARTBEAT_TIMER_DELAY_MS = 2_147_483_647;
 
 export function createRelayHeartbeatConfig(env: NodeJS.ProcessEnv = process.env): RelayHeartbeatSetting {
   if (!parseEnabled(env.WINBRIDGE_RELAY_HEARTBEAT_ENABLED)) {
@@ -20,20 +21,22 @@ export function createRelayHeartbeatConfig(env: NodeJS.ProcessEnv = process.env)
   }
 
   return normalizeRelayHeartbeatConfig({
-    intervalMs: Number.parseInt(
-      env.WINBRIDGE_RELAY_HEARTBEAT_INTERVAL_MS ?? String(DEFAULT_INTERVAL_MS),
-      10
+    intervalMs: parseHeartbeatTimerEnv(
+      env.WINBRIDGE_RELAY_HEARTBEAT_INTERVAL_MS,
+      DEFAULT_INTERVAL_MS,
+      "WINBRIDGE_RELAY_HEARTBEAT_INTERVAL_MS"
     ),
-    timeoutMs: Number.parseInt(
-      env.WINBRIDGE_RELAY_HEARTBEAT_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS),
-      10
+    timeoutMs: parseHeartbeatTimerEnv(
+      env.WINBRIDGE_RELAY_HEARTBEAT_TIMEOUT_MS,
+      DEFAULT_TIMEOUT_MS,
+      "WINBRIDGE_RELAY_HEARTBEAT_TIMEOUT_MS"
     )
   });
 }
 
 export function normalizeRelayHeartbeatConfig(config: RelayHeartbeatConfig): RelayHeartbeatConfig {
-  assertPositiveInteger(config.intervalMs, "Heartbeat interval");
-  assertPositiveInteger(config.timeoutMs, "Heartbeat timeout");
+  assertSafeHeartbeatTimer(config.intervalMs, "Heartbeat interval");
+  assertSafeHeartbeatTimer(config.timeoutMs, "Heartbeat timeout");
   return config;
 }
 
@@ -92,8 +95,31 @@ function parseEnabled(value: string | undefined): boolean {
   throw new Error("Heartbeat enabled flag must be one of true, false, yes, no, 1, or 0");
 }
 
-function assertPositiveInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`${label} must be a positive integer`);
+function parseHeartbeatTimerEnv(
+  raw: string | undefined,
+  fallback: number,
+  name: string
+): number {
+  if (raw === undefined) {
+    return fallback;
+  }
+
+  const value = Number.parseInt(raw, 10);
+
+  if (String(value) !== raw) {
+    throw new Error(`${name} must be an exact integer from 1 through ${MAX_HEARTBEAT_TIMER_DELAY_MS}`);
+  }
+
+  assertSafeHeartbeatTimer(value, name);
+  return value;
+}
+
+function assertSafeHeartbeatTimer(value: number, label: string): void {
+  if (
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > MAX_HEARTBEAT_TIMER_DELAY_MS
+  ) {
+    throw new Error(`${label} must be an exact integer from 1 through ${MAX_HEARTBEAT_TIMER_DELAY_MS}`);
   }
 }

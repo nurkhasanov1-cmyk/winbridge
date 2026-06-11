@@ -73,7 +73,7 @@ The relay runtime SHALL allow tests to inject audit sinks and inspect security-r
 - **THEN** the injected audit sink receives a secret-safe denied token event
 
 ### Requirement: Testable heartbeat configuration
-The managed relay runtime SHALL allow callers to inject relay heartbeat settings or disable heartbeat timers for tests.
+The managed relay runtime SHALL allow callers to inject relay heartbeat settings or disable heartbeat timers for tests, and SHALL reject unsafe injected heartbeat timer values before starting peer heartbeat timers.
 
 #### Scenario: Runtime receives injected heartbeat settings
 - **WHEN** tests create a relay runtime with explicit heartbeat interval and timeout values
@@ -82,6 +82,10 @@ The managed relay runtime SHALL allow callers to inject relay heartbeat settings
 #### Scenario: Runtime disables heartbeat timers
 - **WHEN** tests create a relay runtime with heartbeat disabled
 - **THEN** the runtime accepts peers without starting per-peer heartbeat timers
+
+#### Scenario: Runtime rejects unsafe injected heartbeat settings
+- **WHEN** tests create the relay runtime with non-integer, non-positive, or timer-unsafe heartbeat interval or timeout values
+- **THEN** the runtime rejects configuration before starting peer heartbeat timers
 
 ### Requirement: CLI heartbeat defaults
 The relay CLI SHALL start the managed relay runtime with environment-derived heartbeat configuration.
