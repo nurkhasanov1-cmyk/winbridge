@@ -22,6 +22,14 @@ import {
 
 export type HostDecision = "none" | "approve" | "deny";
 
+type DevelopmentAuditInput = {
+  action: string;
+  outcome: AuditOutcome;
+  detail: Record<string, unknown>;
+};
+
+type DevelopmentAuditEvent = Extract<ProtocolEnvelope, { type: "audit-event" }>;
+
 export type AgentShellRuntimeOptions = {
   role: SessionRole;
   relayUrl: string;
@@ -912,6 +920,14 @@ function handleHostAuthorizationRequest(
       return;
     case "deny": {
       const authorizationId = `authz_${randomUUID()}`;
+      const auditEvent = prepareDevelopmentAuditEvent(options, {
+        action: "agent-shell.authorization.denied",
+        outcome: "denied",
+        detail: {
+          requestedPermissionCount: request.requestedPermissions.length,
+          reasonConfigured: Boolean(options.decisionReason)
+        }
+      });
       setHostAuthorizationSnapshot(sessionState, {
         authorizationId,
         remotePeerId: request.viewerPeerId,
@@ -929,14 +945,7 @@ function handleHostAuthorizationRequest(
         grantedPermissions: [],
         reason: options.decisionReason ?? "Host denied"
       });
-      sendDevelopmentAuditEvent(socket, options, {
-        action: "agent-shell.authorization.denied",
-        outcome: "denied",
-        detail: {
-          requestedPermissionCount: request.requestedPermissions.length,
-          reasonConfigured: Boolean(options.decisionReason)
-        }
-      });
+      sendProtocol(socket, options, auditEvent);
       return;
     }
     case "approve":
@@ -947,6 +956,14 @@ function handleHostAuthorizationRequest(
 
   const authorizationId = `authz_${randomUUID()}`;
   const expiresAt = new Date(Date.now() + (options.authorizationTtlMs ?? 10 * 60_000)).toISOString();
+  const approvalAuditEvent = prepareDevelopmentAuditEvent(options, {
+    action: "agent-shell.authorization.approved",
+    outcome: "accepted",
+    detail: {
+      requestedPermissionCount: request.requestedPermissions.length,
+      grantedPermissionCount: request.requestedPermissions.length
+    }
+  });
 
   setHostAuthorizationSnapshot(sessionState, {
     authorizationId,
@@ -966,20 +983,21 @@ function handleHostAuthorizationRequest(
     grantedPermissions: request.requestedPermissions,
     expiresAt
   });
-  sendDevelopmentAuditEvent(socket, options, {
-    action: "agent-shell.authorization.approved",
-    outcome: "accepted",
-    detail: {
-      requestedPermissionCount: request.requestedPermissions.length,
-      grantedPermissionCount: request.requestedPermissions.length
-    }
-  });
+  sendProtocol(socket, options, approvalAuditEvent);
 
   if (!options.visibleToHost) {
     options.logger?.log("[winbridge-agent] approval sent; active state withheld because visible session is false");
     return;
   }
 
+  const activeAuditEvent = prepareDevelopmentAuditEvent(options, {
+    action: "agent-shell.authorization.active",
+    outcome: "accepted",
+    detail: {
+      grantedPermissionCount: request.requestedPermissions.length,
+      visibleToHost: true
+    }
+  });
   setHostAuthorizationSnapshot(sessionState, {
     authorizationId,
     remotePeerId: request.viewerPeerId,
@@ -998,14 +1016,7 @@ function handleHostAuthorizationRequest(
     permissions: request.requestedPermissions,
     expiresAt
   });
-  sendDevelopmentAuditEvent(socket, options, {
-    action: "agent-shell.authorization.active",
-    outcome: "accepted",
-    detail: {
-      grantedPermissionCount: request.requestedPermissions.length,
-      visibleToHost: true
-    }
-  });
+  sendProtocol(socket, options, activeAuditEvent);
 
   scheduleHostRevoke(socket, options, request, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   scheduleHostTerminate(socket, options, request, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
@@ -1283,6 +1294,15 @@ function scheduleHostRevoke(
       (permission) => permission !== revokedPermission
     );
     const finalGrantRevoked = remainingPermissions.length === 0;
+    const auditEvent = prepareDevelopmentAuditEvent(options, {
+      action: "agent-shell.permission.revoked",
+      outcome: "accepted",
+      detail: {
+        revokedPermission,
+        remainingPermissionCount: remainingPermissions.length,
+        finalGrantRevoked
+      }
+    });
     workflowState.permissions = remainingPermissions;
 
     if (finalGrantRevoked) {
@@ -1316,15 +1336,7 @@ function scheduleHostRevoke(
       expiresAt,
       reason
     });
-    sendDevelopmentAuditEvent(socket, options, {
-      action: "agent-shell.permission.revoked",
-      outcome: "accepted",
-      detail: {
-        revokedPermission,
-        remainingPermissionCount: remainingPermissions.length,
-        finalGrantRevoked
-      }
-    });
+    sendProtocol(socket, options, auditEvent);
   }, options.hostRevokeAfterMs);
 }
 
@@ -1366,6 +1378,16 @@ function scheduleHostPause(
       return;
     }
 
+    const auditEvent = prepareDevelopmentAuditEvent(options, {
+      action: "agent-shell.authorization.paused",
+      outcome: "accepted",
+      detail: {
+        grantedPermissionCount: workflowState.permissions.length,
+        visibleToHost: true,
+        paused: true,
+        reasonConfigured: Boolean(options.hostPauseReason)
+      }
+    });
     workflowState.paused = true;
 
     setHostAuthorizationSnapshot(sessionState, {
@@ -1395,16 +1417,7 @@ function scheduleHostPause(
       reason
     });
 
-    sendDevelopmentAuditEvent(socket, options, {
-      action: "agent-shell.authorization.paused",
-      outcome: "accepted",
-      detail: {
-        grantedPermissionCount: workflowState.permissions.length,
-        visibleToHost: true,
-        paused: true,
-        reasonConfigured: Boolean(options.hostPauseReason)
-      }
-    });
+    sendProtocol(socket, options, auditEvent);
 
     scheduleHostResume(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   }, options.hostPauseAfterMs);
@@ -1445,6 +1458,16 @@ function scheduleHostResume(
       return;
     }
 
+    const auditEvent = prepareDevelopmentAuditEvent(options, {
+      action: "agent-shell.authorization.resumed",
+      outcome: "accepted",
+      detail: {
+        grantedPermissionCount: workflowState.permissions.length,
+        visibleToHost: true,
+        resumed: true,
+        reasonConfigured: Boolean(options.hostResumeReason)
+      }
+    });
     workflowState.paused = false;
 
     sendProtocol(socket, options, {
@@ -1474,16 +1497,7 @@ function scheduleHostResume(
       reason
     });
 
-    sendDevelopmentAuditEvent(socket, options, {
-      action: "agent-shell.authorization.resumed",
-      outcome: "accepted",
-      detail: {
-        grantedPermissionCount: workflowState.permissions.length,
-        visibleToHost: true,
-        resumed: true,
-        reasonConfigured: Boolean(options.hostResumeReason)
-      }
-    });
+    sendProtocol(socket, options, auditEvent);
   }, options.hostResumeAfterMs);
 }
 
@@ -1517,6 +1531,15 @@ function scheduleHostTerminate(
       return;
     }
 
+    const auditEvent = prepareDevelopmentAuditEvent(options, {
+      action: "agent-shell.authorization.terminated",
+      outcome: "accepted",
+      detail: {
+        previouslyGrantedPermissionCount: request.requestedPermissions.length,
+        visibleToHost: true,
+        terminated: true
+      }
+    });
     workflowState.terminalStatus = "terminated";
 
     setHostAuthorizationSnapshot(sessionState, {
@@ -1546,15 +1569,7 @@ function scheduleHostTerminate(
       reason
     });
 
-    sendDevelopmentAuditEvent(socket, options, {
-      action: "agent-shell.authorization.terminated",
-      outcome: "accepted",
-      detail: {
-        previouslyGrantedPermissionCount: request.requestedPermissions.length,
-        visibleToHost: true,
-        terminated: true
-      }
-    });
+    sendProtocol(socket, options, auditEvent);
   }, options.hostTerminateAfterMs);
 }
 
@@ -1580,6 +1595,16 @@ function scheduleHostExpiration(
       return;
     }
 
+    const auditEvent = prepareDevelopmentAuditEvent(options, {
+      action: "agent-shell.authorization.expired",
+      outcome: "accepted",
+      detail: {
+        previouslyGrantedPermissionCount: request.requestedPermissions.length,
+        ttlMs,
+        visibleToHost: true,
+        expired: true
+      }
+    });
     workflowState.terminalStatus = "expired";
 
     setHostAuthorizationSnapshot(sessionState, {
@@ -1601,16 +1626,7 @@ function scheduleHostExpiration(
       reason: "Authorization expired"
     });
 
-    sendDevelopmentAuditEvent(socket, options, {
-      action: "agent-shell.authorization.expired",
-      outcome: "accepted",
-      detail: {
-        previouslyGrantedPermissionCount: request.requestedPermissions.length,
-        ttlMs,
-        visibleToHost: true,
-        expired: true
-      }
-    });
+    sendProtocol(socket, options, auditEvent);
   }, ttlMs);
 }
 
@@ -1633,15 +1649,10 @@ function canSendDelayedHostWorkflow(
   return true;
 }
 
-function sendDevelopmentAuditEvent(
-  socket: WebSocket | undefined,
+function prepareDevelopmentAuditEvent(
   options: AgentShellRuntimeOptions,
-  input: {
-    action: string;
-    outcome: AuditOutcome;
-    detail: Record<string, unknown>;
-  }
-): void {
+  input: DevelopmentAuditInput
+): DevelopmentAuditEvent {
   const eventId = `audit_${randomUUID()}`;
   options.auditSink?.write({
     eventId,
@@ -1656,7 +1667,7 @@ function sendDevelopmentAuditEvent(
     detail: input.detail
   });
 
-  sendProtocol(socket, options, {
+  return {
     ...createMessageBase(options.sessionId),
     type: "audit-event",
     eventId,
@@ -1664,7 +1675,7 @@ function sendDevelopmentAuditEvent(
     action: input.action,
     outcome: input.outcome,
     detail: input.detail
-  });
+  };
 }
 
 export function createAgentShellErrorDiagnostic(error: unknown): AgentShellErrorDiagnostic {

@@ -801,7 +801,7 @@ The host shell SHALL send pause and resume simulation messages only when they ar
 - **THEN** it MUST NOT start screen capture, send input, sync clipboard, transfer files, install services, configure startup persistence, collect credentials, or hide the session from the host
 
 ### Requirement: Host workflow audit file persistence
-The host shell SHALL persist local development audit records for host-generated workflow `audit-event` messages when an audit sink is configured.
+The host shell SHALL persist local development audit records for host-generated workflow `audit-event` messages when an audit sink is configured. When an audit sink is configured, the host shell MUST successfully write the matching local audit record before sending the associated host authorization decision, authorization state, permission revoke, session control, or protocol `audit-event` message for that audited workflow action.
 
 #### Scenario: Host approval audit is persisted
 - **WHEN** the host shell is configured with an audit sink and explicitly approves a visible authorization request
@@ -826,6 +826,14 @@ The host shell SHALL persist local development audit records for host-generated 
 #### Scenario: Audit sink failure is surfaced
 - **WHEN** the configured host workflow audit sink fails to write a record
 - **THEN** the host shell surfaces the failure instead of silently dropping the audit record
+
+#### Scenario: Denial is not sent when denial audit persistence fails
+- **WHEN** the host shell is configured with an audit sink, explicitly denies an authorization request, and the matching audit write fails
+- **THEN** it MUST surface the sanitized runtime failure before sending the denial decision or denial audit-event
+
+#### Scenario: Lifecycle update is not sent when lifecycle audit persistence fails
+- **WHEN** the host shell is configured with an audit sink and a delayed revocation, pause, resume, termination, or expiration audit write fails
+- **THEN** it MUST surface the sanitized runtime failure before sending the associated permission revoke, session control, authorization state, or lifecycle audit-event message
 
 ### Requirement: Inbound self-disconnect boundary
 The agent shell SHALL ignore decoded inbound `peer-disconnected` messages whose `peerId` equals the local runtime peer before emitting local `received` protocol events or recording remote peer disconnected state.

@@ -4160,12 +4160,6 @@ describe("agent shell consent workflow", () => {
     });
     await startViewer(relay.url(), ["screen:view"], viewerEvents);
 
-    await waitForMessage(
-      viewerEvents,
-      (message) =>
-        message.type === "session-authorization-decision" &&
-        message.decision === "denied"
-    );
     const errorEvent = await waitForRuntimeError(hostEvents);
     await delay(50);
 
@@ -4180,10 +4174,92 @@ describe("agent shell consent workflow", () => {
       viewerEvents.some(
         (event) =>
           event.direction === "received" &&
+          event.message.type === "session-authorization-decision" &&
+          event.message.decision === "denied"
+      )
+    ).toBe(false);
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
           event.message.type === "audit-event" &&
           event.message.action === "agent-shell.authorization.denied"
       )
     ).toBe(false);
+    expect(
+      hostEvents.some(
+        (event) =>
+          event.direction === "sent" &&
+          ((event.message.type === "session-authorization-decision" &&
+            event.message.decision === "denied") ||
+            (event.message.type === "audit-event" &&
+              event.message.action === "agent-shell.authorization.denied"))
+      )
+    ).toBe(false);
+  });
+
+  it("withholds active state when active audit persistence fails", async () => {
+    const backingSink = new MemoryAuditSink();
+    const rawErrorMessage = "active audit sink failed with raw-token";
+    const failingSink: AuditSink = {
+      write: (input) => {
+        if (input.action === "agent-shell.authorization.active") {
+          throw new Error(rawErrorMessage);
+        }
+
+        return backingSink.write(input);
+      }
+    };
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostAuditSink: failingSink,
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-decision" &&
+        message.decision === "approved"
+    );
+    const errorEvent = await waitForRuntimeError(hostEvents);
+    await delay(50);
+
+    expect(errorEvent.error.message).toBe("Agent shell runtime error");
+    expect(errorEvent.messageBytes).toBe(Buffer.byteLength(rawErrorMessage));
+    expect(backingSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved"
+    ]);
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
+          event.message.type === "session-authorization-state" &&
+          event.message.status === "active"
+      )
+    ).toBe(false);
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
+          event.message.type === "audit-event" &&
+          event.message.action === "agent-shell.authorization.active"
+      )
+    ).toBe(false);
+    expect(() =>
+      host.send({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "host-1",
+        toPeerId: "viewer-1",
+        payload: {
+          kind: "offer",
+          sdp: "blocked-active-audit-failure"
+        }
+      })
+    ).toThrow("Agent shell signal requires active visible screen authorization");
+    expect(JSON.stringify(hostEvents)).not.toContain("blocked-active-audit-failure");
   });
 
   it("surfaces delayed audit sink write failures as runtime errors", async () => {
@@ -4231,10 +4307,170 @@ describe("agent shell consent workflow", () => {
     ]);
     expect(
       viewerEvents.some(
+        (event) => event.direction === "received" && event.message.type === "permission-revoked"
+      )
+    ).toBe(false);
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
+          event.message.type === "session-authorization-state" &&
+          event.message.status === "revoked"
+      )
+    ).toBe(false);
+    expect(
+      viewerEvents.some(
         (event) =>
           event.direction === "received" &&
           event.message.type === "audit-event" &&
           event.message.action === "agent-shell.permission.revoked"
+      )
+    ).toBe(false);
+    expect(
+      hostEvents.some(
+        (event) =>
+          event.direction === "sent" &&
+          (event.message.type === "permission-revoked" ||
+            (event.message.type === "session-authorization-state" &&
+              event.message.status === "revoked") ||
+            (event.message.type === "audit-event" &&
+              event.message.action === "agent-shell.permission.revoked"))
+      )
+    ).toBe(false);
+  });
+
+  it.each([
+    [
+      "pause",
+      "agent-shell.authorization.paused",
+      { hostPauseAfterMs: 10 },
+      (message: AgentShellReceivedProtocolEnvelope | AgentShellSentProtocolEnvelope) =>
+        (message.type === "session-control" && message.action === "pause") ||
+        (message.type === "session-authorization-state" && message.status === "paused") ||
+        (message.type === "audit-event" && message.action === "agent-shell.authorization.paused")
+    ],
+    [
+      "termination",
+      "agent-shell.authorization.terminated",
+      { hostTerminateAfterMs: 10 },
+      (message: AgentShellReceivedProtocolEnvelope | AgentShellSentProtocolEnvelope) =>
+        (message.type === "session-control" && message.action === "terminate") ||
+        (message.type === "session-authorization-state" && message.status === "terminated") ||
+        (message.type === "audit-event" && message.action === "agent-shell.authorization.terminated")
+    ],
+    [
+      "expiration",
+      "agent-shell.authorization.expired",
+      { authorizationTtlMs: 10 },
+      (message: AgentShellReceivedProtocolEnvelope | AgentShellSentProtocolEnvelope) =>
+        (message.type === "session-authorization-state" && message.status === "expired") ||
+        (message.type === "audit-event" && message.action === "agent-shell.authorization.expired")
+    ]
+  ])(
+    "does not send %s lifecycle messages when audit persistence fails",
+    async (_name, failingAction, lifecycleOptions, blockedMessage) => {
+      const backingSink = new MemoryAuditSink();
+      const hostLogs: string[] = [];
+      const rawErrorMessage = `${failingAction} failed with raw-token`;
+      const failingSink: AuditSink = {
+        write: (input) => {
+          if (input.action === failingAction) {
+            throw new Error(rawErrorMessage);
+          }
+
+          return backingSink.write(input);
+        }
+      };
+      const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+        ...lifecycleOptions,
+        hostAuditSink: failingSink,
+        hostDecision: "approve",
+        hostLogger: captureLogger(hostLogs),
+        visibleToHost: true
+      });
+      await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+      await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.status === "active"
+      );
+      const errorEvent = await waitForRuntimeError(hostEvents);
+      await delay(50);
+
+      const protocolEvents = [...hostEvents, ...viewerEvents].filter(
+        (event): event is Extract<AgentShellEvent, { direction: "received" | "sent" }> =>
+          event.direction === "received" || event.direction === "sent"
+      );
+
+      expect(errorEvent.error.message).toBe("Agent shell runtime error");
+      expect(errorEvent.messageBytes).toBe(Buffer.byteLength(rawErrorMessage));
+      expect(hostLogs.join("\n")).not.toContain(rawErrorMessage);
+      expect(hostLogs.join("\n")).not.toContain("raw-token");
+      expect(backingSink.records().map((record) => record.action)).toEqual([
+        "agent-shell.authorization.approved",
+        "agent-shell.authorization.active"
+      ]);
+      expect(protocolEvents.some((event) => blockedMessage(event.message))).toBe(false);
+    }
+  );
+
+  it("does not send resume messages when resume audit persistence fails", async () => {
+    const backingSink = new MemoryAuditSink();
+    const rawErrorMessage = "resume audit sink failed with raw-token";
+    const failingSink: AuditSink = {
+      write: (input) => {
+        if (input.action === "agent-shell.authorization.resumed") {
+          throw new Error(rawErrorMessage);
+        }
+
+        return backingSink.write(input);
+      }
+    };
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostAuditSink: failingSink,
+      hostDecision: "approve",
+      hostPauseAfterMs: 10,
+      hostResumeAfterMs: 10,
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.paused"
+    );
+    const errorEvent = await waitForRuntimeError(hostEvents);
+    await delay(50);
+
+    const protocolEvents = [...hostEvents, ...viewerEvents].filter(
+      (event): event is Extract<AgentShellEvent, { direction: "received" | "sent" }> =>
+        event.direction === "received" || event.direction === "sent"
+    );
+    const viewerActiveStates = viewerEvents.filter(
+      (event) =>
+        event.direction === "received" &&
+        event.message.type === "session-authorization-state" &&
+        event.message.status === "active"
+    );
+
+    expect(errorEvent.error.message).toBe("Agent shell runtime error");
+    expect(errorEvent.messageBytes).toBe(Buffer.byteLength(rawErrorMessage));
+    expect(backingSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved",
+      "agent-shell.authorization.active",
+      "agent-shell.authorization.paused"
+    ]);
+    expect(viewerActiveStates).toHaveLength(1);
+    expect(
+      protocolEvents.some(
+        (event) =>
+          (event.message.type === "session-control" && event.message.action === "resume") ||
+          (event.message.type === "audit-event" &&
+            event.message.action === "agent-shell.authorization.resumed")
       )
     ).toBe(false);
   });
