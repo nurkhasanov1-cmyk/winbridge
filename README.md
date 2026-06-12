@@ -49,6 +49,12 @@ npm run build
 npm run openspec:validate
 ```
 
+Or run the full local gate:
+
+```powershell
+npm run verify
+```
+
 Run the development relay:
 
 ```powershell

@@ -1,33 +1,18 @@
 # GitHub Setup
 
-The current tool session can prepare a GitHub-ready repository, but it does not expose a GitHub repository creation operation and `gh` is not installed locally.
+The public GitHub remote is:
 
-## Option A: Create with GitHub CLI
-
-Install GitHub CLI, then run:
-
-```powershell
-gh auth login
-gh repo create winbridge --private --source . --remote origin --push
+```text
+https://github.com/nurkhasanov1-cmyk/winbridge.git
 ```
 
-For a public repository, replace `--private` with `--public`.
-
-## Option B: Create in GitHub UI
-
-1. Create an empty repository named `winbridge`.
-2. Do not initialize it with README, license, or gitignore.
-3. Add the remote locally:
+Local verification before pushing:
 
 ```powershell
-git remote add origin https://github.com/<owner>/winbridge.git
-git branch -M main
-git push -u origin main
+npm run verify
 ```
 
 ## Initial GitHub Project Setup
-
-After the remote exists:
 
 - Confirm Actions are enabled.
 - Add branch protection for `main`.

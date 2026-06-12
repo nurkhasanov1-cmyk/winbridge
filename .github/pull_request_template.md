@@ -19,6 +19,7 @@
 
 ## Verification
 
+- [ ] `npm run verify`
 - [ ] `npm run check`
 - [ ] `npm test`
 - [ ] `npm run build`
