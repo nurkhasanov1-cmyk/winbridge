@@ -500,11 +500,29 @@ function parseRuntimeRelayUrl(value: unknown): URL {
     throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
   }
 
+  if (relayUrl.username || relayUrl.password || relayUrlHasUserInfoMarker(value)) {
+    throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
+  }
+
   if (relayUrl.searchParams.has("token")) {
     throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
   }
 
   return relayUrl;
+}
+
+function relayUrlHasUserInfoMarker(raw: string): boolean {
+  const authorityStart = raw.indexOf("://");
+  if (authorityStart === -1) {
+    return false;
+  }
+
+  const authorityRemainder = raw.slice(authorityStart + 3);
+  const authorityEnd = authorityRemainder.search(/[/?#]/);
+  const authority =
+    authorityEnd === -1 ? authorityRemainder : authorityRemainder.slice(0, authorityEnd);
+
+  return authority.includes("@");
 }
 
 function assertRuntimeRole(value: unknown): asserts value is SessionRole {

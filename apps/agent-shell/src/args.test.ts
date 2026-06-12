@@ -60,6 +60,19 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("rejects relay urls with embedded credentials", () => {
+    for (const relayUrl of [
+      "ws://user:password@127.0.0.1:8787/",
+      "wss://user@relay.example.test/session",
+      "ws://@127.0.0.1:8787/",
+      "wss://:@relay.example.test/session"
+    ]) {
+      expect(() => parseArgs(["viewer", "--relay", relayUrl], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+    }
+  });
+
   it("rejects malformed visible session values", () => {
     expect(() => parseArgs(["host", "--visible-session", "yes"], {}, 42)).toThrow(
       AgentShellUsageError

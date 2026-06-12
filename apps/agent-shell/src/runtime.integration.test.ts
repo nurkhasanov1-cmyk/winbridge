@@ -66,6 +66,16 @@ describe("agent shell consent workflow", () => {
         { relayUrl: "ws://127.0.0.1:8787/?token=raw-token" },
         "Runtime relay URL"
       ],
+      [
+        "relay URL credentials",
+        { relayUrl: "ws://user:password@127.0.0.1:8787/" },
+        "Runtime relay URL"
+      ],
+      [
+        "empty relay URL credentials marker",
+        { relayUrl: "ws://@127.0.0.1:8787/" },
+        "Runtime relay URL"
+      ],
       ["malformed role", { role: "controller" as AgentShellRuntimeOptions["role"] }, "Runtime role"],
       ["malformed session id", { sessionId: "session demo" }, "Runtime protocol identifiers"],
       ["malformed pairing code", { pairingCode: "secret" }, "Runtime protocol identifiers"],

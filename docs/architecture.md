@@ -105,8 +105,8 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode does nothing by default when a request is received.
 - Host mode can send approval or denial only with explicit `--host-decision`.
 - Host mode emits active state only when `--visible-session true` is also provided.
-- CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded `token` query values, malformed protocol identifier, malformed permission, malformed pairing, malformed lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
-- The managed runtime also rejects malformed direct options before relay startup, including non-WebSocket relay URLs, relay URLs with embedded `token` query values, malformed identifiers, blank tokens, duplicate or invalid permissions, non-boolean visible-session flags, unsafe workflow timers, and blank or oversized decision/lifecycle reasons. Relay shared tokens use the dedicated `--token`/runtime token path.
+- CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded credentials or `token` query values, malformed protocol identifier, malformed permission, malformed pairing, malformed lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
+- The managed runtime also rejects malformed direct options before relay startup, including non-WebSocket relay URLs, relay URLs with embedded credentials or `token` query values, malformed identifiers, blank tokens, duplicate or invalid permissions, non-boolean visible-session flags, unsafe workflow timers, and blank or oversized decision/lifecycle reasons. Relay shared tokens use the dedicated `--token`/runtime token path.
 - Host mode can simulate permission revocation only after explicit visible approval with `--revoke-after-ms` and `--revoke-permission`.
 - Host mode can simulate session termination only after explicit visible approval with `--terminate-after-ms`.
 - Host mode can simulate authorization expiration after visible activation with `--authorization-ttl-ms`.

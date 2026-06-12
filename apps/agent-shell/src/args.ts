@@ -152,11 +152,29 @@ function parseRelayUrl(raw: string): string {
     throw new AgentShellUsageError();
   }
 
+  if (parsed.username || parsed.password || relayUrlHasUserInfoMarker(raw)) {
+    throw new AgentShellUsageError();
+  }
+
   if (parsed.searchParams.has("token")) {
     throw new AgentShellUsageError();
   }
 
   return parsed.toString();
+}
+
+function relayUrlHasUserInfoMarker(raw: string): boolean {
+  const authorityStart = raw.indexOf("://");
+  if (authorityStart === -1) {
+    return false;
+  }
+
+  const authorityRemainder = raw.slice(authorityStart + 3);
+  const authorityEnd = authorityRemainder.search(/[/?#]/);
+  const authority =
+    authorityEnd === -1 ? authorityRemainder : authorityRemainder.slice(0, authorityEnd);
+
+  return authority.includes("@");
 }
 
 function parseSessionId(raw: string): string {
