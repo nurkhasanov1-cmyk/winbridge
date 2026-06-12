@@ -109,7 +109,7 @@ The relay CLI SHALL start the managed relay runtime with environment-derived hea
 - **THEN** the runtime enables development heartbeat defaults
 
 ### Requirement: Development pairing ticket runtime configuration
-The relay runtime SHALL allow development pairing ticket TTL and maximum-use settings to be configured for tests and local execution, and SHALL reject malformed or unsafe pairing ticket configuration before opening a listener or creating pairing tickets.
+The relay runtime SHALL allow development pairing ticket TTL and maximum-use settings to be configured for tests and local execution, and SHALL reject malformed or unsafe environment-derived or injected pairing ticket configuration before opening a listener, accepting peer connections, or creating pairing tickets.
 
 #### Scenario: Runtime uses injected pairing settings
 - **WHEN** tests create the relay runtime with explicit pairing ticket TTL and maximum-use settings
@@ -128,7 +128,7 @@ The relay runtime SHALL allow development pairing ticket TTL and maximum-use set
 - **THEN** the relay rejects configuration before opening a listener or accepting peer connections
 
 #### Scenario: Unsafe injected pairing settings are rejected
-- **WHEN** tests create a relay runtime or room registry with non-integer, negative, zero-use, or out-of-range pairing ticket settings
+- **WHEN** tests create the relay runtime or room registry with non-number, non-finite, non-integer, negative, null, zero-use, or out-of-range pairing ticket settings
 - **THEN** the runtime rejects configuration before creating host pairing tickets
 
 ### Requirement: Pairing lifecycle audit safety

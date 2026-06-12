@@ -160,8 +160,12 @@ export class RoomRegistry {
 export function normalizeRelayPairingConfig(
   config: Partial<RelayPairingConfig> = {}
 ): RelayPairingConfig {
-  const ticketTtlMs = config.ticketTtlMs ?? DEFAULT_RELAY_PAIRING_TICKET_TTL_MS;
-  const maxUses = config.maxUses ?? DEFAULT_RELAY_PAIRING_TICKET_MAX_USES;
+  const ticketTtlMs =
+    config.ticketTtlMs === undefined
+      ? DEFAULT_RELAY_PAIRING_TICKET_TTL_MS
+      : config.ticketTtlMs;
+  const maxUses =
+    config.maxUses === undefined ? DEFAULT_RELAY_PAIRING_TICKET_MAX_USES : config.maxUses;
 
   assertBoundedInteger(
     ticketTtlMs,
@@ -184,12 +188,12 @@ export function normalizeRelayPairingConfig(
 }
 
 function assertBoundedInteger(
-  value: number,
+  value: unknown,
   label: string,
   min: number,
   max: number
 ): void {
-  if (!Number.isInteger(value) || value < min || value > max) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
     throw new Error(`${label} must be an integer from ${min} through ${max}`);
   }
 }

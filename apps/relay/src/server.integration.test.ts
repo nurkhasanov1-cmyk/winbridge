@@ -1361,6 +1361,22 @@ describe("relay runtime integration", () => {
         }
       })
     ).toThrow("Pairing ticket max uses");
+    expect(() =>
+      createRelayRuntime({
+        port: 0,
+        pairing: {
+          ticketTtlMs: null as unknown as number
+        }
+      })
+    ).toThrow("Pairing ticket TTL");
+    expect(() =>
+      createRelayRuntime({
+        port: 0,
+        pairing: {
+          maxUses: Number.POSITIVE_INFINITY
+        }
+      })
+    ).toThrow("Pairing ticket max uses");
   });
 
   it("parses development relay port environment configuration", () => {

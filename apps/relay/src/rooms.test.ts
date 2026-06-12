@@ -142,10 +142,18 @@ describe("RoomRegistry", () => {
     const unsafeConfigs: Array<Partial<RelayPairingConfig>> = [
       { ticketTtlMs: -1 },
       { ticketTtlMs: 1.5 },
+      { ticketTtlMs: Number.NaN },
+      { ticketTtlMs: Number.POSITIVE_INFINITY },
       { ticketTtlMs: MAX_RELAY_PAIRING_TICKET_TTL_MS + 1 },
+      { ticketTtlMs: "60000" as unknown as number },
+      { ticketTtlMs: null as unknown as number },
       { maxUses: 0 },
       { maxUses: 1.5 },
-      { maxUses: 11 }
+      { maxUses: Number.NaN },
+      { maxUses: Number.POSITIVE_INFINITY },
+      { maxUses: 11 },
+      { maxUses: "1" as unknown as number },
+      { maxUses: null as unknown as number }
     ];
 
     for (const config of unsafeConfigs) {

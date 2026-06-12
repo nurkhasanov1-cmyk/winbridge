@@ -40,7 +40,7 @@ Pairing tickets:
 Protocol pairing ticket factory inputs are bounded before ticket creation. TTL values must be non-negative exact integer milliseconds within the safe timer range, and max-use values must be exact integers from 1 through 10.
 
 The development relay creates pairing tickets when the host joins a room. Viewer joins must consume that host-created ticket before relay registration. Viewer-first, mismatched, expired, or consumed tickets are rejected before message forwarding.
-Pairing ticket TTL and maximum-use configuration is bounded and parsed as exact integers; malformed, empty, partial, negative, or out-of-range configured values fail before the relay accepts peers.
+Pairing ticket TTL and maximum-use configuration is bounded and parsed as exact integers; malformed, empty, partial, negative, non-finite, null, or out-of-range configured values fail before the relay accepts peers or creates host pairing tickets.
 
 When `WINBRIDGE_RELAY_SHARED_TOKEN` is configured, it must be non-blank and peers without exactly one matching `token` query parameter are rejected before room registration. Missing, duplicate, or wrong token parameters fail closed with bounded denial handling. Omitted token configuration keeps the relay in documented development mode; empty or whitespace-only configured tokens fail before accepting peers.
 
