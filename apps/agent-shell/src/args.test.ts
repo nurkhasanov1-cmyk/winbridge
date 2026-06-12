@@ -181,14 +181,36 @@ describe("agent shell arguments", () => {
     ).toBe("logs/env-audit.jsonl");
   });
 
-  it("rejects blank audit log paths", () => {
-    for (const auditLogPath of ["", "   "]) {
+  it("rejects malformed audit log paths", () => {
+    for (const auditLogPath of ["", "   ", " logs/agent-audit.jsonl", "logs/agent-audit.jsonl "]) {
       expect(() => parseArgs(["host", "--audit-log", auditLogPath], {}, 42)).toThrow(
         AgentShellUsageError
       );
       expect(() =>
         parseArgs(["host"], { WINBRIDGE_AGENT_AUDIT_LOG_PATH: auditLogPath }, 42)
       ).toThrow(AgentShellUsageError);
+    }
+  });
+
+  it("rejects untrimmed audit log paths without exposing raw path text", () => {
+    const auditLogPath = " logs/agent-audit-private-marker.jsonl ";
+
+    try {
+      parseArgs(["host", "--audit-log", auditLogPath], {}, 42);
+      throw new Error("Expected untrimmed CLI audit log path to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AgentShellUsageError);
+      expect((error as Error).message).not.toContain("agent-audit-private-marker");
+      expect((error as Error).message).not.toContain(auditLogPath);
+    }
+
+    try {
+      parseArgs(["host"], { WINBRIDGE_AGENT_AUDIT_LOG_PATH: auditLogPath }, 42);
+      throw new Error("Expected untrimmed environment audit log path to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AgentShellUsageError);
+      expect((error as Error).message).not.toContain("agent-audit-private-marker");
+      expect((error as Error).message).not.toContain(auditLogPath);
     }
   });
 

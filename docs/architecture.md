@@ -94,7 +94,7 @@ Peer disconnect notices are lifecycle notifications only. They do not grant perm
 The CLI entrypoint and integration tests use the same runtime implementation. Tests start the relay on an ephemeral local port and verify real WebSocket join, forwarding, rejection, disconnect notification, and rate-limit behavior.
 Unexpected relay CLI startup/shutdown errors are printed as metadata-only diagnostics with generic text and message byte length, not raw exception messages or stacks.
 
-Set `WINBRIDGE_RELAY_AUDIT_LOG_PATH` to write relay audit events to a local JSONL file during development.
+Set `WINBRIDGE_RELAY_AUDIT_LOG_PATH` to write relay audit events to a local JSONL file during development; configured audit paths must be non-blank and already trimmed.
 Heartbeat defaults are controlled by `WINBRIDGE_RELAY_HEARTBEAT_ENABLED`, `WINBRIDGE_RELAY_HEARTBEAT_INTERVAL_MS`, and `WINBRIDGE_RELAY_HEARTBEAT_TIMEOUT_MS`.
 Pairing ticket defaults are controlled by `WINBRIDGE_RELAY_PAIRING_TICKET_TTL_MS` and `WINBRIDGE_RELAY_PAIRING_TICKET_MAX_USES`; injected runtime pairing settings are bounded before host pairing tickets are created.
 
@@ -113,7 +113,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Inbound `hello` messages whose peer id matches the local runtime peer are ignored before local received-event emission or presence workflow handling.
 - Inbound protocol messages whose session id does not match the local runtime session are ignored before local received-event emission or consent workflow handling.
 - Inbound authorization requests that identify the local host peer as the viewer are ignored before local received-event emission or consent workflow handling.
-- CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded credentials or `token` query values, malformed protocol identifier, malformed permission, malformed pairing, blank, untrimmed, control-character, or oversized token, blank, untrimmed, or oversized lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
+- CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded credentials or `token` query values, malformed protocol identifier, malformed permission, malformed pairing, blank, untrimmed, control-character, or oversized token, blank or untrimmed audit log path, blank, untrimmed, or oversized lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
 - The managed runtime also rejects malformed direct options before relay startup, including non-WebSocket relay URLs, relay URLs with embedded credentials or `token` query values, malformed identifiers, blank, untrimmed, control-character, non-string, or oversized tokens, duplicate or invalid permissions, non-boolean visible-session flags, unsafe workflow timers, and blank, untrimmed, or oversized decision/lifecycle reasons. Relay shared tokens use the dedicated `--token`/runtime token path and are bounded before connection setup.
 - Host mode can simulate permission revocation only after explicit visible approval with `--revoke-after-ms` and `--revoke-permission`.
 - Host mode can simulate session termination only after explicit visible approval with `--terminate-after-ms`.
@@ -122,7 +122,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode can simulate local disconnect only after explicit visible approval with `--disconnect-after-ms`; the host closes its relay WebSocket and the relay remains responsible for `peer-disconnected` notices.
 - Host mode emits local secret-safe `indicator` runtime events for visible-session UI wiring after explicit visible activation, updates them for pause/resume/permission changes, and deactivates them on terminal lifecycle, disconnect, runtime stop, or socket close. Indicator events do not authorize remote actions.
 - Host mode emits development `audit-event` protocol messages for decision, activation, revocation, termination, expiration, pause, and resume workflow events.
-- Host mode can persist those host-generated workflow audit events to JSONL with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
+- Host mode can persist those host-generated workflow audit events to JSONL with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`; configured audit paths must be non-blank and already trimmed.
 - Host mode records `peer-disconnected` as remote peer disconnected state and suppresses later delayed workflow simulation messages and direct managed runtime sends for that peer.
 - Host mode suppresses later delayed workflow simulation messages after local disconnect simulation closes the connection.
 - Inbound `peer-disconnected` messages whose peer id matches the local runtime peer are ignored before local received-event emission or remote peer disconnected state handling.

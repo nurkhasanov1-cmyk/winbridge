@@ -294,7 +294,7 @@ function parseOptionalAuditLogPath(raw: string | undefined): string | undefined 
     return undefined;
   }
 
-  if (raw.trim().length === 0) {
+  if (raw.trim().length === 0 || raw !== raw.trim()) {
     throw new AgentShellUsageError();
   }
 

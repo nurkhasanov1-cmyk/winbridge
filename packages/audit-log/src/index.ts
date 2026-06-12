@@ -66,8 +66,8 @@ export class FileAuditSink implements AuditSink {
   private readonly path: string;
 
   constructor(path: string) {
-    if (path.trim().length === 0) {
-      throw new Error("Audit log path must not be blank");
+    if (path.trim().length === 0 || path !== path.trim()) {
+      throw new Error("Audit log path must be non-blank and already trimmed");
     }
 
     this.path = path;

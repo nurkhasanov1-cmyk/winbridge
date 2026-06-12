@@ -18,8 +18,8 @@ export function createRelayAuditSink(env: NodeJS.ProcessEnv = process.env): Audi
     return new ConsoleAuditSink((line) => console.log(`[winbridge-audit] ${line}`));
   }
 
-  if (auditLogPath.trim().length === 0) {
-    throw new Error("WINBRIDGE_RELAY_AUDIT_LOG_PATH must not be blank");
+  if (auditLogPath.trim().length === 0 || auditLogPath !== auditLogPath.trim()) {
+    throw new Error("WINBRIDGE_RELAY_AUDIT_LOG_PATH must be non-blank and already trimmed");
   }
 
   return new FileAuditSink(auditLogPath);

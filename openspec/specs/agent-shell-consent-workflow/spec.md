@@ -627,7 +627,7 @@ The agent shell CLI SHALL report unexpected startup and shutdown failures withou
 - **AND** stderr output MUST NOT include raw user-provided argument values
 
 ### Requirement: Agent shell CLI argument validation
-The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through `--token` rather than embedded in `--relay` URLs. CLI token values MUST be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters. Workflow timer validation SHALL include `--disconnect-after-ms`.
+The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through `--token` rather than embedded in `--relay` URLs. CLI token values MUST be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters. CLI audit log path values MUST be non-blank and already trimmed. Workflow timer validation SHALL include `--disconnect-after-ms`.
 
 #### Scenario: Unknown CLI option is rejected
 - **WHEN** the agent shell is started with an option name that is not part of the documented CLI
@@ -679,6 +679,10 @@ The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments befo
 
 #### Scenario: Blank audit log path option is rejected
 - **WHEN** the agent shell is started with an empty or whitespace-only `--audit-log` value
+- **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
+
+#### Scenario: Untrimmed audit log path option is rejected
+- **WHEN** the agent shell is started with a `--audit-log` value containing leading or trailing whitespace
 - **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
 
 #### Scenario: Valid omitted options keep safe defaults

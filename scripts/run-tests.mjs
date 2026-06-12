@@ -12,6 +12,7 @@ if (testFiles.length === 0) {
 }
 
 for (const testFile of testFiles) {
+  const pool = testFile === "apps/agent-shell/src/runtime.integration.test.ts" ? "threads" : "forks";
   const result = spawnSync(
     process.execPath,
     [
@@ -19,7 +20,7 @@ for (const testFile of testFiles) {
       "run",
       testFile,
       "--pool",
-      "forks",
+      pool,
       "--maxWorkers",
       "1",
       "--minWorkers",

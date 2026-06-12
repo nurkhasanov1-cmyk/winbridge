@@ -118,13 +118,28 @@ describe("relay audit", () => {
     }
   });
 
-  it("rejects blank WINBRIDGE_RELAY_AUDIT_LOG_PATH values", () => {
-    for (const auditLogPath of ["", "   "]) {
+  it("rejects malformed WINBRIDGE_RELAY_AUDIT_LOG_PATH values", () => {
+    for (const auditLogPath of ["", "   ", " logs/relay-audit.jsonl", "logs/relay-audit.jsonl "]) {
       expect(() =>
         createRelayAuditSink({
           WINBRIDGE_RELAY_AUDIT_LOG_PATH: auditLogPath
         })
-      ).toThrow("WINBRIDGE_RELAY_AUDIT_LOG_PATH must not be blank");
+      ).toThrow("WINBRIDGE_RELAY_AUDIT_LOG_PATH must be non-blank and already trimmed");
+    }
+  });
+
+  it("rejects untrimmed WINBRIDGE_RELAY_AUDIT_LOG_PATH without exposing raw path text", () => {
+    const auditLogPath = " logs/relay-audit-private-marker.jsonl ";
+
+    try {
+      createRelayAuditSink({
+        WINBRIDGE_RELAY_AUDIT_LOG_PATH: auditLogPath
+      });
+      throw new Error("Expected untrimmed relay audit log path to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).not.toContain("relay-audit-private-marker");
+      expect((error as Error).message).not.toContain(auditLogPath);
     }
   });
 });
