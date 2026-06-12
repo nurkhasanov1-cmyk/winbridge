@@ -121,6 +121,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Inbound `peer-disconnected` messages whose peer id matches the local runtime peer are ignored before local received-event emission or remote peer disconnected state handling.
 - Runtime `sent` events use schema-normalized event-safe protocol views; audit-event details and join-session pairing codes are redacted from the local event surface.
 - Runtime `sent` events for `signal` messages expose routing metadata and redacted payload summaries, not raw signal payload contents.
+- Viewer-originated `signal` sends fail closed unless the viewer has observed an active, visible, unexpired `screen:view` authorization state.
 - Runtime `received` events for `signal` messages expose routing metadata and redacted payload summaries, not raw signal payload contents.
 - Inbound `signal` messages are ignored before local received-event emission unless they are addressed to the local runtime peer and originate from a distinct remote peer.
 - Inbound authorization lifecycle and audit workflow messages that identify the local runtime peer as the authority actor are ignored before local received-event emission or workflow summary logging.

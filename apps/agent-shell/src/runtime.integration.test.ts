@@ -1838,6 +1838,188 @@ describe("agent shell consent workflow", () => {
     expect(logOutput).not.toContain("payload");
   });
 
+  it("blocks viewer signal sends before active visible screen authorization", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost();
+    const viewerLogs: string[] = [];
+    const viewer = await startViewer(relay.url(), [], viewerEvents, captureLogger(viewerLogs));
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
+    );
+
+    const sentCountBefore = viewerEvents.filter((event) => event.direction === "sent").length;
+    const blockedPayloadMarker = "blocked-viewer-signal-payload";
+
+    expect(() =>
+      viewer.send({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "viewer-1",
+        toPeerId: "host-1",
+        payload: {
+          kind: "viewer-offer",
+          safeMarker: blockedPayloadMarker
+        }
+      })
+    ).toThrow("Agent shell signal requires active visible screen authorization");
+
+    await delay(100);
+
+    expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountBefore);
+    expect(hostEvents.some((event) => event.direction === "received" && event.message.type === "signal")).toBe(false);
+    expect(JSON.stringify(viewerEvents)).not.toContain(blockedPayloadMarker);
+    expect(viewerLogs.join("\n")).not.toContain(blockedPayloadMarker);
+  });
+
+  it("allows viewer signal sends after active visible screen authorization", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    const viewer = await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.visibleToHost
+    );
+
+    const signalPayload = {
+      kind: "viewer-offer",
+      safeMarker: "authorized-viewer-signal-payload"
+    };
+    viewer.send({
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "viewer-1",
+      toPeerId: "host-1",
+      payload: signalPayload
+    });
+
+    const sentSignal = await waitForSentMessage(
+      viewerEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "viewer-1"
+    );
+    const receivedSignal = await waitForMessage(
+      hostEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "viewer-1"
+    );
+
+    expect(sentSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "viewer-1",
+      toPeerId: "host-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
+    expect(receivedSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "viewer-1",
+      toPeerId: "host-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
+    expect(JSON.stringify(sentSignal)).not.toContain("authorized-viewer-signal-payload");
+    expect(JSON.stringify(receivedSignal)).not.toContain("authorized-viewer-signal-payload");
+  });
+
+  it("fails closed for viewer signal sends after revoke, pause, termination, or expiration", async () => {
+    const scenarios: Array<{
+      name: string;
+      options: Parameters<typeof startRelayAndHost>[0];
+      waitForClosedState: (message: AgentShellReceivedProtocolEnvelope) => boolean;
+    }> = [
+      {
+        name: "revoke",
+        options: {
+          hostDecision: "approve",
+          hostRevokeAfterMs: 10,
+          hostRevokePermission: "screen:view",
+          visibleToHost: true
+        },
+        waitForClosedState: (message) => message.type === "permission-revoked"
+      },
+      {
+        name: "pause",
+        options: {
+          hostDecision: "approve",
+          hostPauseAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "paused"
+      },
+      {
+        name: "termination",
+        options: {
+          hostDecision: "approve",
+          hostTerminateAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "terminated"
+      },
+      {
+        name: "expiration",
+        options: {
+          authorizationTtlMs: 20,
+          hostDecision: "approve",
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "expired"
+      }
+    ];
+
+    for (const scenario of scenarios) {
+      const { relay, hostEvents, viewerEvents } = await startRelayAndHost(scenario.options);
+      const viewer = await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+      await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.status === "active" &&
+          message.visibleToHost
+      );
+      await waitForMessage(viewerEvents, scenario.waitForClosedState);
+
+      const sentCountBefore = viewerEvents.filter((event) => event.direction === "sent").length;
+      const hostSignalCountBefore = hostEvents.filter(
+        (event) => event.direction === "received" && event.message.type === "signal"
+      ).length;
+      const blockedPayloadMarker = `blocked-after-${scenario.name}-payload`;
+
+      expect(() =>
+        viewer.send({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "viewer-1",
+          toPeerId: "host-1",
+          payload: {
+            kind: "viewer-offer",
+            safeMarker: blockedPayloadMarker
+          }
+        })
+      ).toThrow("Agent shell signal requires active visible screen authorization");
+
+      await delay(100);
+
+      expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountBefore);
+      expect(
+        hostEvents.filter((event) => event.direction === "received" && event.message.type === "signal")
+      ).toHaveLength(hostSignalCountBefore);
+      expect(JSON.stringify(viewerEvents)).not.toContain(blockedPayloadMarker);
+    }
+  });
+
   it("receives host disconnect notices through the agent shell runtime", async () => {
     const { relay, host, viewerEvents } = await startRelayAndHost();
     const viewerLogs: string[] = [];

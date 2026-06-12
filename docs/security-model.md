@@ -112,6 +112,7 @@ The non-native agent shell can simulate consent messages for development:
 - Host workflow audit records can be persisted locally with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
 - Local runtime `sent` events expose a schema-validated event-safe protocol view; audit-event details and raw pairing codes are redacted from the local event surface.
 - Local runtime `sent` events for `signal` messages expose peer routing metadata and redacted payload summaries, not raw signal payload contents.
+- Viewer-originated `signal` sends are rejected before socket write and local `sent` event emission unless the viewer has observed an active, visible, unexpired `screen:view` authorization state; blocked-send errors, events, and logs do not include raw signal payload contents.
 - Local runtime `received` events for `signal` messages expose peer routing metadata and redacted payload summaries, not raw signal payload contents.
 - Inbound `signal` messages not addressed to the local runtime peer or identifying the local runtime peer as sender are ignored before local `received` protocol events or received signal summary logging; ignored signal routing input is logged only as redacted summary metadata.
 - Inbound authorization lifecycle and audit workflow messages that identify the local runtime peer as the authority actor are ignored before local `received` protocol events or workflow summary logging; ignored self-authority workflow input is logged only as redacted summary metadata.

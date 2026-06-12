@@ -16,6 +16,7 @@ import {
   type AuditOutcome,
   type Permission,
   type ProtocolEnvelope,
+  type SessionAuthorizationStatus,
   type SessionRole
 } from "@winbridge/protocol";
 
@@ -122,8 +123,11 @@ const RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE =
   "Runtime workflow timer delays must be integers from 0 through 2147483647";
 const AGENT_SHELL_RUNTIME_ERROR_MESSAGE = "Agent shell runtime error";
 const AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell peer is disconnected";
+const AGENT_SHELL_SIGNAL_AUTHORIZATION_ERROR_MESSAGE =
+  "Agent shell signal requires active visible screen authorization";
 const REDACTED_EVENT_VALUE = "[REDACTED]";
 const VALID_HOST_DECISIONS = new Set(["none", "approve", "deny"]);
+const VIEWER_SIGNAL_REQUIRED_PERMISSION: Permission = "screen:view";
 
 type HostWorkflowState = {
   terminalStatus?: "revoked" | "terminated" | "expired";
@@ -134,6 +138,15 @@ type HostWorkflowState = {
 type AgentShellSessionState = {
   remotePeerDisconnected: boolean;
   helloSent: boolean;
+  viewerAuthorization?: ViewerAuthorizationSnapshot;
+};
+
+type ViewerAuthorizationSnapshot = {
+  authorizationId: string;
+  status: SessionAuthorizationStatus;
+  visibleToHost: boolean;
+  permissions: Permission[];
+  expiresAt?: string;
 };
 
 export function createAgentShellRuntime(options: AgentShellRuntimeOptions): AgentShellRuntime {
@@ -234,6 +247,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
         throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
       }
 
+      assertViewerSignalSendAuthorized(message, options, sessionState);
       sendProtocol(socket, options, message);
     }
   };
@@ -296,6 +310,8 @@ function handleMessage(
   options.logger?.log(`[winbridge-agent] ${summarizeProtocolMessage(envelope)}`);
 
   try {
+    updateViewerAuthorizationState(options, sessionState, envelope);
+
     if (envelope.type === "peer-disconnected") {
       sessionState.remotePeerDisconnected = true;
     }
@@ -382,6 +398,133 @@ function reportIgnoredUnsafeProtocolMessage(
   const byteLength = Buffer.byteLength(text);
   options.onEvent?.({ direction: "raw", text: REDACTED_EVENT_VALUE, byteLength });
   options.logger?.log(`[winbridge-agent] ignored unsafe inbound protocol message bytes=${byteLength}`);
+}
+
+function updateViewerAuthorizationState(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  envelope: ProtocolEnvelope
+): void {
+  if (options.role !== "viewer") {
+    return;
+  }
+
+  switch (envelope.type) {
+    case "session-authorization-decision":
+      sessionState.viewerAuthorization = {
+        authorizationId: envelope.authorizationId,
+        status: envelope.decision === "approved" ? "approved" : "denied",
+        visibleToHost: false,
+        permissions: [...envelope.grantedPermissions],
+        expiresAt: envelope.expiresAt
+      };
+      return;
+    case "session-authorization-state":
+      sessionState.viewerAuthorization = {
+        authorizationId: envelope.authorizationId,
+        status: envelope.status,
+        visibleToHost: envelope.visibleToHost,
+        permissions: [...envelope.permissions],
+        expiresAt: envelope.expiresAt
+      };
+      return;
+    case "permission-revoked":
+      updateViewerAuthorizationAfterPermissionRevoke(
+        sessionState,
+        envelope.authorizationId,
+        envelope.revokedPermission
+      );
+      return;
+    case "session-control":
+      updateViewerAuthorizationAfterSessionControl(sessionState, envelope);
+      return;
+    default:
+      return;
+  }
+}
+
+function updateViewerAuthorizationAfterPermissionRevoke(
+  sessionState: AgentShellSessionState,
+  authorizationId: string,
+  revokedPermission: Permission
+): void {
+  const snapshot = sessionState.viewerAuthorization;
+  if (!snapshot || snapshot.authorizationId !== authorizationId) {
+    return;
+  }
+
+  sessionState.viewerAuthorization = removeViewerAuthorizationPermission(snapshot, revokedPermission);
+}
+
+function updateViewerAuthorizationAfterSessionControl(
+  sessionState: AgentShellSessionState,
+  message: Extract<ProtocolEnvelope, { type: "session-control" }>
+): void {
+  const snapshot = sessionState.viewerAuthorization;
+  if (!snapshot) {
+    return;
+  }
+
+  switch (message.action) {
+    case "pause":
+      sessionState.viewerAuthorization = { ...snapshot, status: "paused" };
+      return;
+    case "terminate":
+      sessionState.viewerAuthorization = {
+        ...snapshot,
+        status: "terminated",
+        permissions: []
+      };
+      return;
+    case "revoke-permission":
+      if (!message.permission) {
+        return;
+      }
+
+      sessionState.viewerAuthorization = removeViewerAuthorizationPermission(snapshot, message.permission);
+      return;
+    case "resume":
+      return;
+    default: {
+      const exhaustive: never = message.action;
+      return exhaustive;
+    }
+  }
+}
+
+function removeViewerAuthorizationPermission(
+  snapshot: ViewerAuthorizationSnapshot,
+  permission: Permission
+): ViewerAuthorizationSnapshot {
+  const permissions = snapshot.permissions.filter((existing) => existing !== permission);
+
+  return {
+    ...snapshot,
+    permissions,
+    status: permissions.length === 0 ? "revoked" : snapshot.status
+  };
+}
+
+function assertViewerSignalSendAuthorized(
+  message: ProtocolEnvelope,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): void {
+  if (options.role !== "viewer" || message.type !== "signal") {
+    return;
+  }
+
+  const snapshot = sessionState.viewerAuthorization;
+  if (
+    !snapshot ||
+    snapshot.status !== "active" ||
+    !snapshot.visibleToHost ||
+    !snapshot.expiresAt ||
+    hasAuthorizationExpired(snapshot.expiresAt) ||
+    !snapshot.permissions.includes(VIEWER_SIGNAL_REQUIRED_PERMISSION)
+  ) {
+    throw new Error(AGENT_SHELL_SIGNAL_AUTHORIZATION_ERROR_MESSAGE);
+  }
 }
 
 function sendHelloOnce(
