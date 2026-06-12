@@ -2164,9 +2164,7 @@ export function parsePermissions(raw: string | undefined): Permission[] {
     return [];
   }
 
-  const permissions = raw
-    .split(",")
-    .map((permission) => PermissionSchema.parse(permission.trim()));
+  const permissions = raw.split(",").map((permission) => PermissionSchema.parse(permission));
 
   if (new Set(permissions).size !== permissions.length) {
     throw new Error("Requested permissions must be unique");

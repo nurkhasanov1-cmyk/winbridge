@@ -635,7 +635,7 @@ The agent shell CLI SHALL report unexpected startup and shutdown failures withou
 - **AND** stderr output MUST NOT include raw user-provided argument values
 
 ### Requirement: Agent shell CLI argument validation
-The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through `--token` rather than embedded in `--relay` URLs. CLI token values MUST be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters. CLI audit log path values MUST be non-blank and already trimmed. Authorization TTL validation SHALL require `--authorization-ttl-ms` values to be positive integers from `1` through the safe timer delay bound. Lifecycle workflow timer validation SHALL allow `--revoke-after-ms`, `--pause-after-ms`, `--resume-after-ms`, `--terminate-after-ms`, and `--disconnect-after-ms` values from `0` through the safe timer delay bound.
+The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions and requested permission entries that are not exact canonical permission tokens. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through `--token` rather than embedded in `--relay` URLs. CLI token values MUST be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters. CLI audit log path values MUST be non-blank and already trimmed. Authorization TTL validation SHALL require `--authorization-ttl-ms` values to be positive integers from `1` through the safe timer delay bound. Lifecycle workflow timer validation SHALL allow `--revoke-after-ms`, `--pause-after-ms`, `--resume-after-ms`, `--terminate-after-ms`, and `--disconnect-after-ms` values from `0` through the safe timer delay bound.
 
 #### Scenario: Unknown CLI option is rejected
 - **WHEN** the agent shell is started with an option name that is not part of the documented CLI
@@ -660,6 +660,10 @@ The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments befo
 #### Scenario: Invalid permission option is rejected
 - **WHEN** the agent shell is started with an invalid requested or revocation permission value
 - **THEN** it exits through bounded usage handling before sending any protocol message
+
+#### Scenario: Whitespace-padded requested permission is rejected
+- **WHEN** the agent shell is started with `--request` containing a requested permission entry with leading or trailing whitespace
+- **THEN** it exits through bounded usage handling before connecting to the relay or sending a session authorization request
 
 #### Scenario: Duplicate requested permission is rejected
 - **WHEN** the agent shell is started with the same requested permission more than once

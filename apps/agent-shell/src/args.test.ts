@@ -133,6 +133,26 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("parses exact comma-separated requested permissions", () => {
+    expect(parseArgs(["viewer", "--request", "screen:view,input:pointer"], {}, 42).requestedPermissions).toEqual([
+      "screen:view",
+      "input:pointer"
+    ]);
+  });
+
+  it("rejects whitespace-padded requested permissions", () => {
+    for (const request of [
+      " screen:view",
+      "screen:view ",
+      "screen:view, input:pointer",
+      "screen:view,input:pointer "
+    ]) {
+      expect(() => parseArgs(["viewer", "--request", request], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+    }
+  });
+
   it("rejects duplicate requested permissions", () => {
     expect(() =>
       parseArgs(["viewer", "--request", "screen:view,input:pointer,screen:view"], {}, 42)

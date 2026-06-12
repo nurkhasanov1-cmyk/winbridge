@@ -130,6 +130,7 @@ npm run dev:agent -- viewer --session demo --pairing 123-456
 ```
 
 Optional `--name` display values must be non-blank, already trimmed, and at most 120 characters.
+Optional `--request` values must use exact comma-separated permission tokens with no spaces around entries, for example `screen:view,input:pointer`.
 Optional workflow reason values such as `--revoke-reason`, `--pause-reason`, `--resume-reason`, and `--terminate-reason` must be non-blank, already trimmed, and at most 240 characters.
 
 Exercise the development consent workflow:
