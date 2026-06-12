@@ -19,17 +19,20 @@ const AuditActionSchema = z
   .string()
   .min(1)
   .max(160)
-  .refine((action) => action.trim().length > 0, "Audit action must not be blank");
+  .refine((action) => action.trim().length > 0, "Audit action must not be blank")
+  .refine((action) => action === action.trim(), "Audit action must be trimmed");
 const AuditReasonSchema = z
   .string()
   .min(1)
   .max(240)
-  .refine((reason) => reason.trim().length > 0, "Audit reason must not be blank");
+  .refine((reason) => reason.trim().length > 0, "Audit reason must not be blank")
+  .refine((reason) => reason === reason.trim(), "Audit reason must be trimmed");
 const AuditTargetTypeSchema = z
   .string()
   .min(1)
   .max(80)
-  .refine((type) => type.trim().length > 0, "Audit target type must not be blank");
+  .refine((type) => type.trim().length > 0, "Audit target type must not be blank")
+  .refine((type) => type === type.trim(), "Audit target type must be trimmed");
 
 export const AuditDetailSchema = createJsonObjectSchema(
   "Audit detail must be JSON-compatible"

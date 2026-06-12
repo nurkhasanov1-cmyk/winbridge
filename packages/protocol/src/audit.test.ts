@@ -209,6 +209,35 @@ describe("audit records", () => {
     ).toThrow("Audit target type must not be blank");
   });
 
+  it("rejects untrimmed audit metadata fields", () => {
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: " relay.message.rejected",
+        outcome: "failed"
+      })
+    ).toThrow("Audit action must be trimmed");
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.rejected",
+        outcome: "failed",
+        reason: "Invalid relay token "
+      })
+    ).toThrow("Audit reason must be trimmed");
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.forwarded",
+        outcome: "accepted",
+        target: {
+          type: " peer ",
+          id: "viewer-1"
+        }
+      })
+    ).toThrow("Audit target type must be trimmed");
+  });
+
   it("rejects audit records with malformed identifiers", () => {
     expect(() =>
       createAuditRecord({

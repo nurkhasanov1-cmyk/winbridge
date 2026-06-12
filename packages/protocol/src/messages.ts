@@ -60,7 +60,8 @@ const ProtocolAuditActionSchema = z
   .string()
   .min(1)
   .max(120)
-  .refine((action) => action.trim().length > 0, "Audit event action must not be blank");
+  .refine((action) => action.trim().length > 0, "Audit event action must not be blank")
+  .refine((action) => action === action.trim(), "Audit event action must be trimmed");
 const ProtocolCapabilitySchema = z
   .string()
   .min(1)

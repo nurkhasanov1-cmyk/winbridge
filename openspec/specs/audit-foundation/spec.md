@@ -45,7 +45,7 @@ The system SHALL provide reusable development audit sinks for tests and local de
 - **THEN** each record is serialized as one JSON line
 
 ### Requirement: Audit schema validation
-The system SHALL validate audit records before storing or emitting them through audit sinks. Audit records MUST reject blank or whitespace-only semantic metadata fields, including action, optional reason, and target type.
+The system SHALL validate audit records before storing or emitting them through audit sinks. Audit records MUST reject blank, whitespace-only, oversized, or untrimmed semantic metadata fields, including action, optional reason, and target type.
 
 #### Scenario: Audit record misses required actor
 - **WHEN** a component writes an audit record without required actor metadata
@@ -55,12 +55,24 @@ The system SHALL validate audit records before storing or emitting them through 
 - **WHEN** a component writes an audit record with an empty or whitespace-only action
 - **THEN** the audit sink rejects the record before storing or emitting meaningless action metadata
 
+#### Scenario: Audit record action is untrimmed
+- **WHEN** a component writes an audit record with an action containing leading or trailing whitespace
+- **THEN** the audit sink rejects the record before storing or emitting ambiguous action metadata
+
 #### Scenario: Audit record reason is blank
 - **WHEN** a component writes an audit record with a whitespace-only reason
 - **THEN** the audit sink rejects the record instead of storing meaningless reason metadata
 
+#### Scenario: Audit record reason is untrimmed
+- **WHEN** a component writes an audit record with a top-level reason containing leading or trailing whitespace
+- **THEN** the audit sink rejects the record instead of storing ambiguous reason metadata
+
 #### Scenario: Audit record target type is blank
 - **WHEN** a component writes an audit record with a whitespace-only target type
+- **THEN** the audit sink rejects the record before storing ambiguous target metadata
+
+#### Scenario: Audit record target type is untrimmed
+- **WHEN** a component writes an audit record with a target type containing leading or trailing whitespace
 - **THEN** the audit sink rejects the record before storing ambiguous target metadata
 
 ### Requirement: Audit fixed fields reject unknown metadata
@@ -124,7 +136,7 @@ The system SHALL redact audit detail fields whose key names indicate common auth
 - **THEN** the audit record detail MUST preserve that identifier value unless another sensitive key rule applies
 
 ### Requirement: Protocol audit-event detail redaction
-The system SHALL redact sensitive fields in protocol `audit-event` message details during schema parsing and encoding before the message is emitted, forwarded, or stored by development components. Protocol `audit-event` messages MUST reject blank or whitespace-only action metadata before parsing, forwarding, encoding, or persistence.
+The system SHALL redact sensitive fields in protocol `audit-event` message details during schema parsing and encoding before the message is emitted, forwarded, or stored by development components. Protocol `audit-event` messages MUST reject blank, whitespace-only, oversized, or untrimmed action metadata before parsing, forwarding, encoding, or persistence.
 
 #### Scenario: Audit-event detail includes sensitive fields
 - **WHEN** an `audit-event` protocol message detail includes fields named token, credential, password, pairingCode, keystroke, screenshot, screenData, screenContent, clipboardText, clipboardContents, fileContent, fileData, fileBytes, fileTransfer, diagnosticDump, diagnostics, secret, apiKey, authorization, authHeader, cookie, setCookie, sessionCookie, or privateKey
@@ -145,6 +157,10 @@ The system SHALL redact sensitive fields in protocol `audit-event` message detai
 #### Scenario: Audit-event action is blank
 - **WHEN** an `audit-event` protocol message includes an empty or whitespace-only action
 - **THEN** the protocol schema rejects the message before it can be forwarded, encoded, emitted, or persisted with meaningless action metadata
+
+#### Scenario: Audit-event action is untrimmed
+- **WHEN** an `audit-event` protocol message includes an action containing leading or trailing whitespace
+- **THEN** the protocol schema rejects the message before it can be forwarded, encoded, emitted, or persisted with ambiguous action metadata
 
 ### Requirement: Private audit detail metadata redaction
 The system SHALL redact audit detail fields whose key names commonly carry raw user display-name metadata or private lifecycle reason text, while preserving bounded non-secret reason metadata.

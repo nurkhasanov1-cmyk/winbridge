@@ -2001,6 +2001,22 @@ describe("protocol envelopes", () => {
       })
     ).toThrow("Audit event action must not be blank");
   });
+
+  it("rejects untrimmed audit-event actions", () => {
+    const message = {
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: " agent-shell.test ",
+      outcome: "failed"
+    } as const;
+
+    expect(() => parseProtocolEnvelope(message)).toThrow("Audit event action must be trimmed");
+    expect(() =>
+      encodeProtocolEnvelope(message as Parameters<typeof encodeProtocolEnvelope>[0])
+    ).toThrow("Audit event action must be trimmed");
+  });
 });
 
 describe("session grants", () => {
