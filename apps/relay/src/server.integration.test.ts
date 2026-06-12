@@ -1735,6 +1735,62 @@ describe("relay runtime integration", () => {
     });
   });
 
+  it("rate-limits repeated invalid shared-token attempts without logging raw tokens", async () => {
+    const auditSink = new MemoryAuditSink();
+    const configuredToken = "correct-token configured-token-marker";
+    const firstToken = "wrong-token first-presented-token-marker";
+    const secondToken = "wrong-token second-presented-token-marker";
+    const runtime = await startRuntime({
+      auditSink,
+      sharedToken: configuredToken,
+      invalidTokenLimiter: new SlidingWindowRateLimiter({ limit: 1, windowMs: 60_000 })
+    });
+
+    const first = await openSocket(`${runtime.url()}?token=${encodeURIComponent(firstToken)}`);
+    expect(await waitForClose(first)).toEqual({
+      code: 1008,
+      reason: "Invalid relay token"
+    });
+
+    const second = await openSocket(`${runtime.url()}?token=${encodeURIComponent(secondToken)}`);
+    expect(await waitForClose(second)).toEqual({
+      code: 1008,
+      reason: "Relay token rate limit exceeded"
+    });
+
+    const denied = auditSink.records().filter((record) => record.action === "relay.token.denied");
+    expect(denied).toHaveLength(2);
+    expect(denied[0]?.detail).toMatchObject({
+      accessPresented: true,
+      accessConfigured: true,
+      rateLimit: {
+        allowed: true,
+        limit: 1,
+        remaining: 0
+      }
+    });
+    expect(denied[1]?.detail).toMatchObject({
+      accessPresented: true,
+      accessConfigured: true,
+      rateLimit: {
+        allowed: false,
+        limit: 1,
+        remaining: 0
+      }
+    });
+
+    const serialized = JSON.stringify(auditSink.records());
+    expect(serialized).not.toContain(configuredToken);
+    expect(serialized).not.toContain(firstToken);
+    expect(serialized).not.toContain(secondToken);
+    expect(serialized).not.toContain("configured-token-marker");
+    expect(serialized).not.toContain("first-presented-token-marker");
+    expect(serialized).not.toContain("second-presented-token-marker");
+    expect(auditSink.records().some((record) => record.action === "relay.peer.join.accepted")).toBe(
+      false
+    );
+  });
+
   it("rejects duplicate shared-token query parameters without logging raw tokens", async () => {
     const auditSink = new MemoryAuditSink();
     const configuredToken = "correct-token configured-token-marker";
