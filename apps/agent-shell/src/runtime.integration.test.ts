@@ -588,6 +588,73 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("ignores workflow authority messages that identify the local peer as actor", async () => {
+    const selfAuthorityServer = await startSelfAuthorityWorkflowServer();
+    const hostEvents: AgentShellEvent[] = [];
+    const hostLogs: string[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: selfAuthorityServer.url,
+        logger: captureLogger(hostLogs),
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+
+      const rawEvents = await waitForRawEventCount(hostEvents, 5);
+      await delay(100);
+
+      expect(rawEvents).toHaveLength(5);
+      for (const rawEvent of rawEvents) {
+        expect(rawEvent).toMatchObject({
+          direction: "raw",
+          text: "[REDACTED]",
+          byteLength: expect.any(Number)
+        });
+        expect(rawEvent.byteLength).toBeGreaterThan(0);
+      }
+      expect(hostEvents.some((event) => event.direction === "received")).toBe(false);
+      expect(
+        hostEvents.some(
+          (event) =>
+            event.direction === "sent" &&
+            (event.message.type === "session-authorization-state" ||
+              event.message.type === "session-control" ||
+              event.message.type === "permission-revoked" ||
+              event.message.type === "audit-event")
+        )
+      ).toBe(false);
+
+      const serializedRawEvents = JSON.stringify(rawEvents);
+      const logOutput = hostLogs.join("\n");
+      expect(logOutput.match(/ignored unsafe inbound protocol message bytes=/g)).toHaveLength(5);
+      expect(logOutput).not.toContain("session-authorization-decision");
+      expect(logOutput).not.toContain("session-authorization-state");
+      expect(logOutput).not.toContain("session-control");
+      expect(logOutput).not.toContain("permission-revoked");
+      expect(logOutput).not.toContain("audit-event");
+      expect(logOutput).not.toContain("host-1");
+      expect(logOutput).not.toContain("authz_self");
+      expect(logOutput).not.toContain("audit_self");
+      expect(logOutput).not.toContain("private self-authority reason");
+      expect(logOutput).not.toContain("raw-token");
+      expect(serializedRawEvents).not.toContain("session-authorization-decision");
+      expect(serializedRawEvents).not.toContain("session-authorization-state");
+      expect(serializedRawEvents).not.toContain("session-control");
+      expect(serializedRawEvents).not.toContain("permission-revoked");
+      expect(serializedRawEvents).not.toContain("audit-event");
+      expect(serializedRawEvents).not.toContain("host-1");
+      expect(serializedRawEvents).not.toContain("authz_self");
+      expect(serializedRawEvents).not.toContain("audit_self");
+      expect(serializedRawEvents).not.toContain("private self-authority reason");
+      expect(serializedRawEvents).not.toContain("raw-token");
+    } finally {
+      await host?.stop();
+      await selfAuthorityServer.stop();
+    }
+  });
+
   it("sends approved decision and active visible state when host explicitly approves visibly", async () => {
     const { relay, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
@@ -2600,6 +2667,92 @@ async function startMisdirectedSignalServer(): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Misdirected signal test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startSelfAuthorityWorkflowServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+      const messages: ProtocolEnvelope[] = [
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz_self_decision",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "denied",
+          grantedPermissions: [],
+          reason: "private self-authority reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz_self_state",
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: ["screen:view"],
+          expiresAt,
+          reason: "private self-authority reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-control",
+          actorPeerId: "host-1",
+          action: "pause",
+          reason: "private self-authority reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "permission-revoked",
+          authorizationId: "authz_self_revoke",
+          actorPeerId: "host-1",
+          revokedPermission: "screen:view",
+          reason: "private self-authority reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "audit-event",
+          eventId: "audit_self_authority",
+          actorPeerId: "host-1",
+          action: "agent-shell.self-authority.raw-token",
+          outcome: "accepted",
+          detail: {
+            token: "raw-token"
+          }
+        }
+      ];
+
+      for (const message of messages) {
+        socket.send(encodeProtocolEnvelope(message));
+      }
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Self-authority workflow test server did not expose a TCP port");
   }
 
   return {

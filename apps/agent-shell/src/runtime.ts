@@ -287,6 +287,11 @@ function handleMessage(
     return;
   }
 
+  if (isSelfAuthorityWorkflowMessage(envelope, options)) {
+    reportIgnoredUnsafeProtocolMessage(text, options);
+    return;
+  }
+
   options.onEvent?.({ direction: "received", message: redactReceivedEventMessage(envelope) });
   options.logger?.log(`[winbridge-agent] ${summarizeProtocolMessage(envelope)}`);
 
@@ -350,6 +355,23 @@ function isMisdirectedSignal(
   return (
     envelope.type === "signal" &&
     (envelope.toPeerId !== options.peerId || envelope.fromPeerId === options.peerId)
+  );
+}
+
+function isSelfAuthorityWorkflowMessage(
+  envelope: ProtocolEnvelope,
+  options: AgentShellRuntimeOptions
+): boolean {
+  if (envelope.type === "session-authorization-decision") {
+    return envelope.hostPeerId === options.peerId;
+  }
+
+  return (
+    (envelope.type === "session-authorization-state" ||
+      envelope.type === "session-control" ||
+      envelope.type === "permission-revoked" ||
+      envelope.type === "audit-event") &&
+    envelope.actorPeerId === options.peerId
   );
 }
 
