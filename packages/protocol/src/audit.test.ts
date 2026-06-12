@@ -428,10 +428,14 @@ describe("audit records", () => {
       authHeaderValue: "decorated-auth-header",
       rawAuthorizationHeader: "raw-authorization-header",
       proxyAuthorization: "proxy-authorization-secret",
+      accessKey: "raw-access-key",
+      access_key: "raw-access-key-underscore",
+      "access-key": "raw-access-key-dash",
       cookie: "sid=raw-cookie",
       setCookie: "sid=raw-set-cookie",
       sessionCookie: "raw-session-cookie",
       privateKey: "raw-private-key",
+      sshKey: "raw-ssh-key",
       authorizationId: "authz-demo",
       fileTransfer: {
         fileData: "raw-transfer-data"
@@ -444,6 +448,7 @@ describe("audit records", () => {
         diagnostics: "raw-diagnostics",
         request: {
           authorization_header: "nested-authorization",
+          ssh_key: "nested-ssh-key",
           clipboardContents: "nested-clipboard"
         }
       },
@@ -464,10 +469,14 @@ describe("audit records", () => {
       authHeaderValue: "[REDACTED]",
       rawAuthorizationHeader: "[REDACTED]",
       proxyAuthorization: "[REDACTED]",
+      accessKey: "[REDACTED]",
+      access_key: "[REDACTED]",
+      "access-key": "[REDACTED]",
       cookie: "[REDACTED]",
       setCookie: "[REDACTED]",
       sessionCookie: "[REDACTED]",
       privateKey: "[REDACTED]",
+      sshKey: "[REDACTED]",
       authorizationId: "authz-demo",
       fileTransfer: "[REDACTED]",
       fileTransferId: "transfer-demo",
@@ -478,6 +487,7 @@ describe("audit records", () => {
         diagnostics: "[REDACTED]",
         request: {
           authorization_header: "[REDACTED]",
+          ssh_key: "[REDACTED]",
           clipboardContents: "[REDACTED]"
         }
       },
@@ -490,6 +500,44 @@ describe("audit records", () => {
         }
       ]
     });
+  });
+
+  it("redacts access-key and SSH-key audit details in created records", () => {
+    const record = createAuditRecord({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.message.rejected",
+      outcome: "failed",
+      detail: {
+        accessKey: "raw-access-key",
+        authorizationId: "authz-demo",
+        nested: {
+          sshKey: "raw-ssh-key"
+        },
+        attempts: [
+          {
+            access_key: "array-access-key",
+            authorizationId: "authz-array"
+          }
+        ]
+      }
+    });
+
+    expect(record.detail).toEqual({
+      accessKey: "[REDACTED]",
+      authorizationId: "authz-demo",
+      nested: {
+        sshKey: "[REDACTED]"
+      },
+      attempts: [
+        {
+          access_key: "[REDACTED]",
+          authorizationId: "authz-array"
+        }
+      ]
+    });
+    expect(JSON.stringify(record)).not.toContain("raw-access-key");
+    expect(JSON.stringify(record)).not.toContain("raw-ssh-key");
+    expect(JSON.stringify(record)).not.toContain("array-access-key");
   });
 
   it("redacts display-name and private reason detail keys while preserving safe metadata", () => {

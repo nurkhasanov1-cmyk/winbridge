@@ -87,8 +87,10 @@ const sensitiveKeySubstrings = [
   "diagnosticscontent",
   "diagnosticsdump",
   "apikey",
+  "accesskey",
   "cookie",
   "privatekey",
+  "sshkey",
   "authorizationheader",
   "authheader",
   "proxyauthorization"

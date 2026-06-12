@@ -597,8 +597,12 @@ describe("protocol envelopes", () => {
       { rawAuthorizationHeader: "Authorization: Bearer raw-token" },
       { authHeaderValue: "Bearer raw-token" },
       { proxyAuthorization: "Proxy raw-secret" },
+      { accessKey: "raw-access-key" },
+      { access_key: "raw-access-key-underscore" },
+      { "access-key": "raw-access-key-dash" },
       { sessionCookie: "sid=raw-cookie" },
       { privateKey: "raw-private-key" },
+      { sshKey: "raw-ssh-key" },
       { nested: [{ rawAuthorizationHeader: "Authorization: Bearer nested-token" }] }
     ];
 
@@ -699,19 +703,55 @@ describe("protocol envelopes", () => {
   });
 
   it("rejects unsafe signal payloads when encoding protocol messages", () => {
-    expect(() =>
-      encodeProtocolEnvelope({
-        ...createMessageBase("session-demo"),
-        type: "signal",
-        fromPeerId: "host-1",
-        toPeerId: "viewer-1",
-        payload: {
-          authorizationId: "authz-demo",
-          kind: "offer",
-          screenContent: "raw screen"
+    const unsafePayloads: Array<Record<string, unknown>> = [
+      { screenContent: "raw screen" },
+      { accessKey: "raw-access-key" },
+      { nested: [{ ssh_key: "raw-ssh-key" }] }
+    ];
+
+    for (const payload of unsafePayloads) {
+      expect(() =>
+        encodeProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload: {
+            authorizationId: "authz-demo",
+            kind: "offer",
+            ...payload
+          }
+        })
+      ).toThrow("must not contain sensitive remote-assistance data");
+    }
+  });
+
+  it("accepts signal payloads with safe key exchange metadata", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        authorizationId: "authz-demo",
+        kind: "candidate",
+        keyExchangeId: "kx-demo",
+        nested: {
+          publicKeyFingerprint: "sha256-demo"
         }
-      })
-    ).toThrow("must not contain sensitive remote-assistance data");
+      }
+    });
+
+    expect(parsed).toMatchObject({
+      type: "signal",
+      payload: {
+        authorizationId: "authz-demo",
+        keyExchangeId: "kx-demo",
+        nested: {
+          publicKeyFingerprint: "sha256-demo"
+        }
+      }
+    });
   });
 
   it("accepts peer disconnect notices with bounded reason codes", () => {
@@ -1778,12 +1818,15 @@ describe("protocol envelopes", () => {
         authHeaderValue: "decorated-auth-header",
         rawAuthorizationHeader: "raw-authorization-header",
         proxyAuthorization: "proxy-authorization-secret",
+        accessKey: "raw-access-key",
         cookie: "sid=raw-cookie",
         privateKey: "raw-private-key",
+        sshKey: "raw-ssh-key",
         authorizationId: "authz-demo",
         attempts: [
           {
             sessionCookie: "array-cookie",
+            ssh_key: "array-ssh-key",
             authorizationId: "authz-array"
           }
         ]
@@ -1798,12 +1841,15 @@ describe("protocol envelopes", () => {
         authHeaderValue: "[REDACTED]",
         rawAuthorizationHeader: "[REDACTED]",
         proxyAuthorization: "[REDACTED]",
+        accessKey: "[REDACTED]",
         cookie: "[REDACTED]",
         privateKey: "[REDACTED]",
+        sshKey: "[REDACTED]",
         authorizationId: "authz-demo",
         attempts: [
           {
             sessionCookie: "[REDACTED]",
+            ssh_key: "[REDACTED]",
             authorizationId: "authz-array"
           }
         ]
@@ -1814,8 +1860,11 @@ describe("protocol envelopes", () => {
     expect(JSON.stringify(parsed)).not.toContain("decorated-auth-header");
     expect(JSON.stringify(parsed)).not.toContain("raw-authorization-header");
     expect(JSON.stringify(parsed)).not.toContain("proxy-authorization-secret");
+    expect(JSON.stringify(parsed)).not.toContain("raw-access-key");
     expect(JSON.stringify(parsed)).not.toContain("raw-cookie");
     expect(JSON.stringify(parsed)).not.toContain("raw-private-key");
+    expect(JSON.stringify(parsed)).not.toContain("raw-ssh-key");
+    expect(JSON.stringify(parsed)).not.toContain("array-ssh-key");
   });
 
   it("redacts audit-event display-name and private reason detail fields while preserving safe metadata", () => {
@@ -1911,10 +1960,12 @@ describe("protocol envelopes", () => {
       outcome: "accepted",
       detail: {
         apiKey: "api-key-secret",
+        accessKey: "raw-access-key",
         authorization: "Bearer raw-token",
         rawAuthorizationHeader: "raw-authorization-header",
         cookie: "sid=raw-cookie",
         privateKey: "raw-private-key",
+        ssh_key: "raw-ssh-key",
         clipboardContents: "raw-clipboard",
         fileData: "raw-file-data",
         diagnostics: "raw-diagnostics",
@@ -1925,20 +1976,24 @@ describe("protocol envelopes", () => {
 
     expect(decoded.detail).toEqual({
       apiKey: "[REDACTED]",
+      accessKey: "[REDACTED]",
       authorization: "[REDACTED]",
       rawAuthorizationHeader: "[REDACTED]",
       cookie: "[REDACTED]",
       privateKey: "[REDACTED]",
+      ssh_key: "[REDACTED]",
       clipboardContents: "[REDACTED]",
       fileData: "[REDACTED]",
       diagnostics: "[REDACTED]",
       authorizationId: "authz-demo"
     });
     expect(encoded).not.toContain("api-key-secret");
+    expect(encoded).not.toContain("raw-access-key");
     expect(encoded).not.toContain("raw-token");
     expect(encoded).not.toContain("raw-authorization-header");
     expect(encoded).not.toContain("raw-cookie");
     expect(encoded).not.toContain("raw-private-key");
+    expect(encoded).not.toContain("raw-ssh-key");
     expect(encoded).not.toContain("raw-clipboard");
     expect(encoded).not.toContain("raw-file-data");
     expect(encoded).not.toContain("raw-diagnostics");

@@ -117,6 +117,21 @@ The relay and agents SHALL reject `signal` protocol messages whose payload omits
 - **WHEN** a registered peer sends a `signal` message whose payload contains keylogging-related field names such as `keylog`, `rawKeylog`, `keylogger`, or `keyloggerOutput` at any nesting level
 - **THEN** the relay rejects the message before forwarding it and MUST NOT treat the payload as trusted remote-assistance data
 
+### Requirement: Access-key and SSH-key signal payload rejection
+The protocol schema SHALL treat signal payload keys that indicate access keys or SSH keys as sensitive remote-assistance data and reject those `signal` messages before forwarding, encoding, sending, receiving, or treating the payload as trusted signaling metadata.
+
+#### Scenario: Access-key signal payload is rejected
+- **WHEN** a `signal` payload contains field names such as `accessKey`, `access_key`, or `access-key` at any nesting level
+- **THEN** the protocol schema MUST reject the message before it can be forwarded or encoded
+
+#### Scenario: SSH-key signal payload is rejected recursively
+- **WHEN** a `signal` payload contains SSH-key field names such as `sshKey` or `ssh_key` inside nested objects or arrays
+- **THEN** the protocol schema MUST reject the message before treating the payload as trusted remote-assistance signaling metadata
+
+#### Scenario: Authorization identifier remains permitted
+- **WHEN** a `signal` payload contains a valid top-level `authorizationId` and no sensitive access-key or SSH-key field names
+- **THEN** the protocol schema MUST continue to accept the payload if all other signal safety checks pass
+
 ### Requirement: Signal payload JSON compatibility
 The relay and agents SHALL accept only JSON-compatible object values in `signal.payload` before parsing, encoding, forwarding, sending, receiving, or treating the payload as trusted remote-assistance signaling metadata. `signal.payload` MUST reject values that cannot be represented faithfully in JSON, including functions, symbols, bigint, `undefined`, `NaN`, `Infinity`, `-Infinity`, cyclic values, own symbol-keyed properties, own non-enumerable properties, accessor properties, sparse arrays, non-index array properties, and inherited `toJSON` hooks that would change encoded output.
 
