@@ -170,6 +170,31 @@ describe("protocol envelopes", () => {
     }
   });
 
+  it("rejects signal payloads with remote-assistance content keys", () => {
+    const unsafePayloads: Array<Record<string, unknown>> = [
+      { clipboardText: "raw-clipboard-text" },
+      { fileContent: "raw-file-content" },
+      { fileData: "raw-file-data" },
+      { fileBytes: "raw-file-bytes" },
+      { fileTransfer: { content: "raw-file-transfer" } },
+      { diagnosticDump: "raw-diagnostic-dump" },
+      { diagnostics: { content: "raw-diagnostics-content" } },
+      { nested: [{ clipboardContents: "nested-clipboard-text" }] }
+    ];
+
+    for (const payload of unsafePayloads) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload
+        })
+      ).toThrow("must not contain sensitive remote-assistance data");
+    }
+  });
+
   it("accepts signal payloads with non-secret lifecycle authorization identifiers", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),

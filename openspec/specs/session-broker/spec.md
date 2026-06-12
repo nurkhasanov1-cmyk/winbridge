@@ -45,7 +45,7 @@ The relay and agents SHALL validate protocol envelopes before accepting or forwa
 - **THEN** the peer-facing relay error and audit reason MUST NOT include raw protocol payloads, parser internals, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets
 
 ### Requirement: Signal payload safety
-The relay and agents SHALL reject `signal` protocol messages whose payload is empty, exceeds the configured protocol payload size bound, or contains keys that indicate raw tokens, credentials, pairing codes, API keys, authorization headers, auth headers, cookies, private keys, keystrokes, screenshots, screen data, screen contents, or secrets. Non-secret lifecycle identifiers such as `authorizationId` MUST remain permitted.
+The relay and agents SHALL reject `signal` protocol messages whose payload is empty, exceeds the configured protocol payload size bound, or contains keys that indicate raw tokens, credentials, pairing codes, API keys, authorization headers, auth headers, cookies, private keys, keystrokes, screenshots, screen data, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or secrets. Non-secret lifecycle identifiers such as `authorizationId` MUST remain permitted.
 
 #### Scenario: Small signaling payload is accepted
 - **WHEN** a registered peer sends a `signal` message containing a non-empty small signaling payload without sensitive key names
@@ -64,7 +64,7 @@ The relay and agents SHALL reject `signal` protocol messages whose payload is em
 - **THEN** the relay rejects the message before forwarding it
 
 #### Scenario: Sensitive signal payload keys are rejected
-- **WHEN** a registered peer sends a `signal` message whose payload contains a token, credential, pairing code, API key, authorization header, auth header, cookie, private key, keystroke, screenshot, screen data, screen content, or secret key at any nesting level
+- **WHEN** a registered peer sends a `signal` message whose payload contains a token, credential, pairing code, API key, authorization header, auth header, cookie, private key, keystroke, screenshot, screen data, screen content, clipboard content, file-transfer content/data/bytes, diagnostics content/dump, or secret key at any nesting level
 - **THEN** the relay rejects the message before forwarding it and MUST NOT treat the payload as trusted remote-assistance data
 
 ### Requirement: Development relay token

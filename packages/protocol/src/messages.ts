@@ -31,6 +31,12 @@ const SENSITIVE_SIGNAL_PAYLOAD_KEY_INDICATORS = [
   "screenshot",
   "screendata",
   "screencontent",
+  "clipboard",
+  "filecontent",
+  "filedata",
+  "filebytes",
+  "filetransfer",
+  "diagnostic",
   "secret"
 ] as const;
 const SENSITIVE_SIGNAL_PAYLOAD_KEY_EXACT_MATCHES = new Set(["authorization"]);

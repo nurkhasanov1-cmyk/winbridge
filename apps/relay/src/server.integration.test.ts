@@ -129,6 +129,55 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("123-456");
   });
 
+  it("rejects remote-assistance content signal payloads before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    host.send(
+      JSON.stringify({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "host-1",
+        toPeerId: "viewer-1",
+        payload: {
+          kind: "offer",
+          authorizationId: "authz-demo",
+          nested: {
+            clipboardText: "raw-clipboard-text",
+            fileContent: "raw-file-content",
+            fileBytes: "raw-file-bytes",
+            diagnosticDump: "raw-diagnostic-dump"
+          }
+        }
+      })
+    );
+
+    const relayError = await waitForJsonMessage(host, (message) => message.type === "relay-error");
+    expect(String(relayError.reason)).toContain("Signal payload must not contain sensitive");
+    await expectNoProtocolMessage(viewer, (message) => message.type === "signal");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        typeof record.reason === "string" &&
+        record.reason.includes("Signal payload must not contain sensitive")
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain("raw-clipboard-text");
+    expect(JSON.stringify(rejected)).not.toContain("raw-file-content");
+    expect(JSON.stringify(rejected)).not.toContain("raw-file-bytes");
+    expect(JSON.stringify(rejected)).not.toContain("raw-diagnostic-dump");
+  });
+
   it("rejects oversized relay messages before forwarding", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
