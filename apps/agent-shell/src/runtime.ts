@@ -260,7 +260,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
         throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
       }
 
-      assertViewerSignalSendAuthorized(message, options, sessionState);
+      assertSignalSendAuthorized(message, options, sessionState);
       sendProtocol(socket, options, message);
     }
   };
@@ -653,16 +653,16 @@ function removeViewerAuthorizationPermission(
   };
 }
 
-function assertViewerSignalSendAuthorized(
+function assertSignalSendAuthorized(
   message: ProtocolEnvelope,
   options: AgentShellRuntimeOptions,
   sessionState: AgentShellSessionState
 ): void {
-  if (options.role !== "viewer" || message.type !== "signal") {
+  if (message.type !== "signal") {
     return;
   }
 
-  const snapshot = sessionState.viewerAuthorization;
+  const snapshot = options.role === "host" ? sessionState.hostAuthorization : sessionState.viewerAuthorization;
   if (!hasActiveSignalAuthorization(snapshot)) {
     throw new Error(AGENT_SHELL_SIGNAL_AUTHORIZATION_ERROR_MESSAGE);
   }
@@ -827,18 +827,18 @@ function handleHostAuthorizationRequest(
     return;
   }
 
-  sendProtocol(socket, options, {
-    ...createMessageBase(options.sessionId),
-    type: "session-authorization-state",
+  setHostAuthorizationSnapshot(sessionState, {
     authorizationId,
-    actorPeerId: options.peerId,
     status: "active",
     visibleToHost: true,
     permissions: request.requestedPermissions,
     expiresAt
   });
-  setHostAuthorizationSnapshot(sessionState, {
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-authorization-state",
     authorizationId,
+    actorPeerId: options.peerId,
     status: "active",
     visibleToHost: true,
     permissions: request.requestedPermissions,
@@ -1134,6 +1134,13 @@ function scheduleHostRevoke(
       workflowState.terminalStatus = "revoked";
     }
 
+    setHostAuthorizationSnapshot(sessionState, {
+      authorizationId,
+      status: finalGrantRevoked ? "revoked" : workflowState.paused ? "paused" : "active",
+      visibleToHost: true,
+      permissions: remainingPermissions,
+      expiresAt
+    });
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "permission-revoked",
@@ -1153,13 +1160,6 @@ function scheduleHostRevoke(
       permissions: remainingPermissions,
       expiresAt,
       reason
-    });
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: finalGrantRevoked ? "revoked" : workflowState.paused ? "paused" : "active",
-      visibleToHost: true,
-      permissions: remainingPermissions,
-      expiresAt
     });
     sendDevelopmentAuditEvent(socket, options, {
       action: "agent-shell.permission.revoked",
@@ -1213,6 +1213,13 @@ function scheduleHostPause(
 
     workflowState.paused = true;
 
+    setHostAuthorizationSnapshot(sessionState, {
+      authorizationId,
+      status: "paused",
+      visibleToHost: true,
+      permissions: workflowState.permissions,
+      expiresAt
+    });
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-control",
@@ -1231,13 +1238,6 @@ function scheduleHostPause(
       permissions: workflowState.permissions,
       expiresAt,
       reason
-    });
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: "paused",
-      visibleToHost: true,
-      permissions: workflowState.permissions,
-      expiresAt
     });
 
     sendDevelopmentAuditEvent(socket, options, {
@@ -1300,6 +1300,13 @@ function scheduleHostResume(
       reason
     });
 
+    setHostAuthorizationSnapshot(sessionState, {
+      authorizationId,
+      status: "active",
+      visibleToHost: true,
+      permissions: workflowState.permissions,
+      expiresAt
+    });
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-authorization-state",
@@ -1310,13 +1317,6 @@ function scheduleHostResume(
       permissions: workflowState.permissions,
       expiresAt,
       reason
-    });
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: "active",
-      visibleToHost: true,
-      permissions: workflowState.permissions,
-      expiresAt
     });
 
     sendDevelopmentAuditEvent(socket, options, {
@@ -1364,6 +1364,13 @@ function scheduleHostTerminate(
 
     workflowState.terminalStatus = "terminated";
 
+    setHostAuthorizationSnapshot(sessionState, {
+      authorizationId,
+      status: "terminated",
+      visibleToHost: true,
+      permissions: [],
+      expiresAt
+    });
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-control",
@@ -1382,13 +1389,6 @@ function scheduleHostTerminate(
       permissions: [],
       expiresAt,
       reason
-    });
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: "terminated",
-      visibleToHost: true,
-      permissions: [],
-      expiresAt
     });
 
     sendDevelopmentAuditEvent(socket, options, {
@@ -1427,6 +1427,13 @@ function scheduleHostExpiration(
 
     workflowState.terminalStatus = "expired";
 
+    setHostAuthorizationSnapshot(sessionState, {
+      authorizationId,
+      status: "expired",
+      visibleToHost: true,
+      permissions: [],
+      expiresAt
+    });
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-authorization-state",
@@ -1437,13 +1444,6 @@ function scheduleHostExpiration(
       permissions: [],
       expiresAt,
       reason: "Authorization expired"
-    });
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: "expired",
-      visibleToHost: true,
-      permissions: [],
-      expiresAt
     });
 
     sendDevelopmentAuditEvent(socket, options, {

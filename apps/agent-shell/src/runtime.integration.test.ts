@@ -283,11 +283,18 @@ describe("agent shell consent workflow", () => {
     }
   });
 
-  it("emits sent signal events without raw payload contents", async () => {
-    const { host, hostEvents } = await startRelayAndHost();
-    await waitForMessage(
+  it("allows host signal sends after active visible authorization and redacts payload contents", async () => {
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+    await waitForSentMessage(
       hostEvents,
-      (message) => message.type === "relay-ready" && message.peerId === "host-1"
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.visibleToHost
     );
 
     const signalPayload = {
@@ -306,6 +313,10 @@ describe("agent shell consent workflow", () => {
     const sentSignal = hostEvents.find(
       (event) => event.direction === "sent" && event.message.type === "signal"
     );
+    const receivedSignal = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "host-1"
+    );
 
     expect(sentSignal).toBeDefined();
     expect(sentSignal?.direction === "sent" && sentSignal.message.type === "signal"
@@ -319,8 +330,19 @@ describe("agent shell consent workflow", () => {
         byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
       }
     });
+    expect(receivedSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
     expect(JSON.stringify(sentSignal)).not.toContain("outbound-offer-data");
     expect(JSON.stringify(sentSignal)).not.toContain("outbound-candidate");
+    expect(JSON.stringify(receivedSignal)).not.toContain("outbound-offer-data");
+    expect(JSON.stringify(receivedSignal)).not.toContain("outbound-candidate");
   });
 
   it("ignores signal messages that are not addressed to the local peer or originate locally", async () => {
@@ -1798,13 +1820,19 @@ describe("agent shell consent workflow", () => {
   });
 
   it("logs protocol message summaries without raw payloads", async () => {
-    const { relay, host, viewerEvents } = await startRelayAndHost();
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
     const viewerLogs: string[] = [];
-    await startViewer(relay.url(), [], viewerEvents, captureLogger(viewerLogs));
+    await startViewer(relay.url(), ["screen:view"], viewerEvents, captureLogger(viewerLogs));
 
-    await waitForMessage(
-      viewerEvents,
-      (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
+    await waitForSentMessage(
+      hostEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.visibleToHost
     );
     const signalPayload = {
       kind: "offer",
@@ -1870,6 +1898,97 @@ describe("agent shell consent workflow", () => {
     expect(hostEvents.some((event) => event.direction === "received" && event.message.type === "signal")).toBe(false);
     expect(JSON.stringify(viewerEvents)).not.toContain(blockedPayloadMarker);
     expect(viewerLogs.join("\n")).not.toContain(blockedPayloadMarker);
+  });
+
+  it("blocks host signal sends before active visible screen authorization", async () => {
+    const hostLogs: string[] = [];
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostLogger: captureLogger(hostLogs)
+    });
+    await startViewer(relay.url(), [], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
+    );
+
+    const viewerSignalCountBefore = viewerEvents.filter(
+      (event) => event.direction === "received" && event.message.type === "signal"
+    ).length;
+
+    await expectHostSignalSendBlocked(host, hostEvents, "blocked-host-signal-payload", hostLogs);
+
+    expect(
+      viewerEvents.filter((event) => event.direction === "received" && event.message.type === "signal")
+    ).toHaveLength(viewerSignalCountBefore);
+  });
+
+  it("allows reentrant host signal sends during active lifecycle sent event", async () => {
+    let hostRuntime: AgentShellRuntime | undefined;
+    const reentrantErrors: string[] = [];
+    const signalPayload = {
+      kind: "host-offer",
+      safeMarker: "active-reentrant-host-signal-payload"
+    };
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true,
+      hostOnEvent: (event) => {
+        if (
+          event.direction !== "sent" ||
+          event.message.type !== "session-authorization-state" ||
+          event.message.status !== "active" ||
+          !hostRuntime
+        ) {
+          return;
+        }
+
+        try {
+          hostRuntime.send({
+            ...createMessageBase("session-demo"),
+            type: "signal",
+            fromPeerId: "host-1",
+            toPeerId: "viewer-1",
+            payload: signalPayload
+          });
+        } catch (error) {
+          reentrantErrors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+    });
+    hostRuntime = host;
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const sentSignal = await waitForSentMessage(
+      hostEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "host-1"
+    );
+    const receivedSignal = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "host-1"
+    );
+
+    expect(reentrantErrors).toEqual([]);
+    expect(sentSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
+    expect(receivedSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
+    expect(JSON.stringify(sentSignal)).not.toContain("active-reentrant-host-signal-payload");
+    expect(JSON.stringify(receivedSignal)).not.toContain("active-reentrant-host-signal-payload");
   });
 
   it("ignores unbound viewer authorization state before authorizing signal sends", async () => {
@@ -2255,6 +2374,216 @@ describe("agent shell consent workflow", () => {
       await viewer.stop();
       await restartServer.stop();
     }
+  });
+
+  it("fails closed for host signal sends after revoke, pause, termination, or expiration", async () => {
+    const scenarios: Array<{
+      name: string;
+      options: Parameters<typeof startRelayAndHost>[0];
+      waitForClosedState: (message: AgentShellSentProtocolEnvelope) => boolean;
+    }> = [
+      {
+        name: "revoke",
+        options: {
+          hostDecision: "approve",
+          hostRevokeAfterMs: 10,
+          hostRevokePermission: "screen:view",
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "revoked"
+      },
+      {
+        name: "pause",
+        options: {
+          hostDecision: "approve",
+          hostPauseAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "paused"
+      },
+      {
+        name: "termination",
+        options: {
+          hostDecision: "approve",
+          hostTerminateAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "terminated"
+      },
+      {
+        name: "expiration",
+        options: {
+          authorizationTtlMs: 20,
+          hostDecision: "approve",
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "expired"
+      }
+    ];
+
+    for (const scenario of scenarios) {
+      const hostLogs: string[] = [];
+      const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+        ...scenario.options,
+        hostLogger: captureLogger(hostLogs)
+      });
+      await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+      await waitForSentMessage(
+        hostEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.status === "active" &&
+          message.visibleToHost
+      );
+      await waitForSentMessage(hostEvents, scenario.waitForClosedState);
+
+      const viewerSignalCountBefore = viewerEvents.filter(
+        (event) => event.direction === "received" && event.message.type === "signal"
+      ).length;
+
+      await expectHostSignalSendBlocked(
+        host,
+        hostEvents,
+        `blocked-host-after-${scenario.name}-payload`,
+        hostLogs
+      );
+
+      expect(
+        viewerEvents.filter((event) => event.direction === "received" && event.message.type === "signal")
+      ).toHaveLength(viewerSignalCountBefore);
+    }
+  });
+
+  it("blocks reentrant host signal sends during closing lifecycle sent events", async () => {
+    const scenarios: Array<{
+      name: string;
+      options: Parameters<typeof startRelayAndHost>[0];
+      isTrigger: (message: AgentShellSentProtocolEnvelope) => boolean;
+    }> = [
+      {
+        name: "revoke",
+        options: {
+          hostDecision: "approve",
+          hostRevokeAfterMs: 10,
+          hostRevokePermission: "screen:view",
+          visibleToHost: true
+        },
+        isTrigger: (message) => message.type === "permission-revoked"
+      },
+      {
+        name: "pause",
+        options: {
+          hostDecision: "approve",
+          hostPauseAfterMs: 10,
+          visibleToHost: true
+        },
+        isTrigger: (message) => message.type === "session-control" && message.action === "pause"
+      },
+      {
+        name: "termination",
+        options: {
+          hostDecision: "approve",
+          hostTerminateAfterMs: 10,
+          visibleToHost: true
+        },
+        isTrigger: (message) => message.type === "session-control" && message.action === "terminate"
+      },
+      {
+        name: "expiration",
+        options: {
+          authorizationTtlMs: 20,
+          hostDecision: "approve",
+          visibleToHost: true
+        },
+        isTrigger: (message) =>
+          message.type === "session-authorization-state" && message.status === "expired"
+      }
+    ];
+
+    for (const scenario of scenarios) {
+      let hostRuntime: AgentShellRuntime | undefined;
+      const reentrantErrors: string[] = [];
+      const blockedPayloadMarker = `blocked-reentrant-host-${scenario.name}-payload`;
+      const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+        ...scenario.options,
+        hostOnEvent: (event) => {
+          if (event.direction !== "sent" || !scenario.isTrigger(event.message) || !hostRuntime) {
+            return;
+          }
+
+          try {
+            hostRuntime.send({
+              ...createMessageBase("session-demo"),
+              type: "signal",
+              fromPeerId: "host-1",
+              toPeerId: "viewer-1",
+              payload: {
+                kind: "host-offer",
+                safeMarker: blockedPayloadMarker
+              }
+            });
+          } catch (error) {
+            reentrantErrors.push(error instanceof Error ? error.message : String(error));
+          }
+        }
+      });
+      hostRuntime = host;
+      await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+      await waitForSentMessage(
+        hostEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.status === "active" &&
+          message.visibleToHost
+      );
+      await waitForSentMessage(hostEvents, scenario.isTrigger);
+      await delay(100);
+
+      expect(reentrantErrors).toEqual(["Agent shell signal requires active visible screen authorization"]);
+      expect(
+        hostEvents.some(
+          (event) =>
+            event.direction === "sent" &&
+            event.message.type === "signal" &&
+            JSON.stringify(event.message).includes(blockedPayloadMarker)
+        )
+      ).toBe(false);
+      expect(JSON.stringify(hostEvents)).not.toContain(blockedPayloadMarker);
+    }
+  });
+
+  it("clears host signal send authorization across runtime restart", async () => {
+    const hostLogs: string[] = [];
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostLogger: captureLogger(hostLogs),
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForSentMessage(
+      hostEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.visibleToHost
+    );
+
+    await host.stop();
+    await host.start();
+
+    await expectHostSignalSendBlocked(
+      host,
+      hostEvents,
+      "blocked-host-after-restart-payload",
+      hostLogs
+    );
   });
 
   it("allows viewer signal sends after active visible screen authorization", async () => {
@@ -2679,17 +3008,16 @@ describe("agent shell consent workflow", () => {
       expect(() =>
         host.send({
           ...createMessageBase("session-demo"),
-          type: "signal",
-          fromPeerId: "host-1",
-          toPeerId: "viewer-1",
-          payload: {
-            kind: "offer",
-            sdp: "post-self-disconnect-offer"
-          }
+          type: "audit-event",
+          eventId: "audit_after_self_disconnect",
+          actorPeerId: "host-1",
+          action: "agent-shell.test.self-disconnect",
+          outcome: "accepted",
+          detail: {}
         })
       ).not.toThrow();
       expect(
-        hostEvents.some((event) => event.direction === "sent" && event.message.type === "signal")
+        hostEvents.some((event) => event.direction === "sent" && event.message.type === "audit-event")
       ).toBe(true);
 
       const serializedRawEvents = JSON.stringify(hostEvents.filter((event) => event.direction === "raw"));
@@ -2701,7 +3029,6 @@ describe("agent shell consent workflow", () => {
       expect(serializedRawEvents).not.toContain("peer-disconnected");
       expect(serializedRawEvents).not.toContain("host-1");
       expect(serializedRawEvents).not.toContain("session-demo");
-      expect(JSON.stringify(hostEvents)).not.toContain("post-self-disconnect-offer");
     } finally {
       await host?.stop();
       await selfDisconnectServer.stop();
@@ -2773,12 +3100,18 @@ describe("agent shell consent workflow", () => {
 
   it("does not persist arbitrary received protocol payloads through the workflow audit sink", async () => {
     const viewerAuditSink = new MemoryAuditSink();
-    const { relay, host, viewerEvents } = await startRelayAndHost();
-    await startViewer(relay.url(), [], viewerEvents, silentLogger, viewerAuditSink);
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents, silentLogger, viewerAuditSink);
 
-    await waitForMessage(
-      viewerEvents,
-      (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
+    await waitForSentMessage(
+      hostEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.visibleToHost
     );
     host.send({
       ...createMessageBase("session-demo"),
@@ -2980,9 +3313,12 @@ describe("agent shell consent workflow", () => {
     );
     host.send({
       ...createMessageBase("different-session"),
-      type: "signal",
-      fromPeerId: "host-1",
-      payload: { kind: "offer", sdp: "do-not-log" }
+      type: "audit-event",
+      eventId: "audit_wrong_session",
+      actorPeerId: "host-1",
+      action: "agent-shell.test.wrong-session",
+      outcome: "accepted",
+      detail: { token: "do-not-log" }
     });
     const rawEvent = await waitForRawEvent(hostEvents);
 
@@ -3059,6 +3395,7 @@ async function startRelayAndHost(options: {
   hostDecision?: "none" | "approve" | "deny";
   hostDisplayName?: string;
   hostLogger?: TestLogger;
+  hostOnEvent?: (event: AgentShellEvent) => void;
   hostPauseAfterMs?: number;
   hostPauseReason?: string;
   hostResumeAfterMs?: number;
@@ -3108,7 +3445,10 @@ async function startRelayAndHost(options: {
     hostTerminateReason: options.hostTerminateReason,
     visibleToHost: options.visibleToHost ?? false,
     logger: options.hostLogger ?? silentLogger,
-    onEvent: (event) => hostEvents.push(event)
+    onEvent: (event) => {
+      hostEvents.push(event);
+      options.hostOnEvent?.(event);
+    }
   });
   await host.start();
   agentRuntimes.push(host);
@@ -3354,7 +3694,9 @@ async function expectViewerSignalSendBlocked(
   blockedPayloadMarker: string,
   viewerLogs: string[] = []
 ): Promise<void> {
-  const sentCountBefore = viewerEvents.filter((event) => event.direction === "sent").length;
+  const sentSignalCountBefore = viewerEvents.filter(
+    (event) => event.direction === "sent" && event.message.type === "signal"
+  ).length;
 
   expect(() =>
     viewer.send({
@@ -3371,9 +3713,43 @@ async function expectViewerSignalSendBlocked(
 
   await delay(100);
 
-  expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountBefore);
+  expect(
+    viewerEvents.filter((event) => event.direction === "sent" && event.message.type === "signal")
+  ).toHaveLength(sentSignalCountBefore);
   expect(JSON.stringify(viewerEvents)).not.toContain(blockedPayloadMarker);
   expect(viewerLogs.join("\n")).not.toContain(blockedPayloadMarker);
+}
+
+async function expectHostSignalSendBlocked(
+  host: AgentShellRuntime,
+  hostEvents: AgentShellEvent[],
+  blockedPayloadMarker: string,
+  hostLogs: string[] = []
+): Promise<void> {
+  const sentSignalCountBefore = hostEvents.filter(
+    (event) => event.direction === "sent" && event.message.type === "signal"
+  ).length;
+
+  expect(() =>
+    host.send({
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        kind: "host-offer",
+        safeMarker: blockedPayloadMarker
+      }
+    })
+  ).toThrow("Agent shell signal requires active visible screen authorization");
+
+  await delay(100);
+
+  expect(
+    hostEvents.filter((event) => event.direction === "sent" && event.message.type === "signal")
+  ).toHaveLength(sentSignalCountBefore);
+  expect(JSON.stringify(hostEvents)).not.toContain(blockedPayloadMarker);
+  expect(hostLogs.join("\n")).not.toContain(blockedPayloadMarker);
 }
 
 async function startCloseReasonServer(closeReason: string): Promise<{

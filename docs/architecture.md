@@ -125,6 +125,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Viewer-side authorization lifecycle state is bound to the host authority from a decision addressed to the local viewer; unbound, mismatched, denied-to-active, or prior-connection state/control/revoke messages are ignored before received-event emission and cannot unlock `signal` sends.
 - Runtime `received` events for `signal` messages expose routing metadata and redacted payload summaries, not raw signal payload contents.
 - Host inbound `signal` messages are ignored before local received-event emission unless the host has locally emitted an active, visible, unexpired `screen:view` authorization state.
+- Host-originated public runtime `signal` sends fail closed before socket write and local sent-event emission unless the host has locally emitted an active, visible, unexpired `screen:view` authorization state.
 - Inbound `signal` messages are ignored before local received-event emission unless they are addressed to the local runtime peer and originate from a distinct remote peer.
 - Inbound authorization lifecycle and audit workflow messages that identify the local runtime peer as the authority actor are ignored before local received-event emission or workflow summary logging.
 - Runtime `sent` and `received` events redact protocol `reason` text while preserving consent workflow metadata.
