@@ -47,6 +47,10 @@ const deniedForbiddenLifecycleTimestamps = [
   "terminatedAt",
   "expiredAt"
 ] as const;
+const liveForbiddenLifecycleTimestamps = ["deniedAt", "terminatedAt", "expiredAt"] as const;
+const revokedForbiddenLifecycleTimestamps = ["deniedAt", "terminatedAt", "expiredAt"] as const;
+const terminatedForbiddenLifecycleTimestamps = ["deniedAt", "expiredAt"] as const;
+const expiredForbiddenLifecycleTimestamps = ["deniedAt", "terminatedAt"] as const;
 const lifecycleTimestampFields = [
   "deniedAt",
   "approvedAt",
@@ -57,6 +61,7 @@ const lifecycleTimestampFields = [
   "terminatedAt",
   "expiredAt"
 ] as const;
+type LifecycleTimestampField = (typeof lifecycleTimestampFields)[number];
 const AuthorizationReasonSchema = z
   .string()
   .min(1)
@@ -153,6 +158,22 @@ export const SessionAuthorizationSchema = SessionAuthorizationBaseSchema.superRe
 
   if (authorization.status === "denied") {
     rejectForbiddenLifecycleTimestamps(authorization, deniedForbiddenLifecycleTimestamps, ctx);
+  }
+
+  if (authorization.status === "active" || authorization.status === "paused") {
+    rejectForbiddenLifecycleTimestamps(authorization, liveForbiddenLifecycleTimestamps, ctx);
+  }
+
+  if (authorization.status === "revoked") {
+    rejectForbiddenLifecycleTimestamps(authorization, revokedForbiddenLifecycleTimestamps, ctx);
+  }
+
+  if (authorization.status === "terminated") {
+    rejectForbiddenLifecycleTimestamps(authorization, terminatedForbiddenLifecycleTimestamps, ctx);
+  }
+
+  if (authorization.status === "expired") {
+    rejectForbiddenLifecycleTimestamps(authorization, expiredForbiddenLifecycleTimestamps, ctx);
   }
 
   if (authorization.status === "active" && authorization.pausedAt && !authorization.resumedAt) {
@@ -602,5 +623,74 @@ function validateTimestampOrder(
         path: [field]
       });
     }
+  }
+
+  validateLifecycleTimestampSequence(authorization, ctx);
+}
+
+function validateLifecycleTimestampSequence(
+  authorization: z.infer<typeof SessionAuthorizationBaseSchema>,
+  ctx: z.RefinementCtx
+): void {
+  for (const laterField of [
+    "activatedAt",
+    "pausedAt",
+    "resumedAt",
+    "revokedAt",
+    "terminatedAt",
+    "expiredAt"
+  ] as const) {
+    requireTimestampNotBefore(authorization, "approvedAt", laterField, ctx);
+  }
+
+  for (const laterField of [
+    "pausedAt",
+    "resumedAt",
+    "revokedAt",
+    "terminatedAt",
+    "expiredAt"
+  ] as const) {
+    requireTimestampNotBefore(authorization, "activatedAt", laterField, ctx);
+  }
+
+  if (authorization.status === "active") {
+    requireTimestampNotBefore(authorization, "pausedAt", "resumedAt", ctx);
+  }
+
+  if (authorization.status === "paused") {
+    requireTimestampNotBefore(authorization, "resumedAt", "pausedAt", ctx);
+  }
+
+  if (authorization.status === "revoked") {
+    requireTimestampNotBefore(authorization, "pausedAt", "revokedAt", ctx);
+    requireTimestampNotBefore(authorization, "resumedAt", "revokedAt", ctx);
+  }
+
+  for (const terminalField of ["terminatedAt", "expiredAt"] as const) {
+    requireTimestampNotBefore(authorization, "pausedAt", terminalField, ctx);
+    requireTimestampNotBefore(authorization, "resumedAt", terminalField, ctx);
+    requireTimestampNotBefore(authorization, "revokedAt", terminalField, ctx);
+  }
+}
+
+function requireTimestampNotBefore(
+  authorization: z.infer<typeof SessionAuthorizationBaseSchema>,
+  earlierField: LifecycleTimestampField,
+  laterField: LifecycleTimestampField,
+  ctx: z.RefinementCtx
+): void {
+  const earlierValue = authorization[earlierField];
+  const laterValue = authorization[laterField];
+
+  if (earlierValue === undefined || laterValue === undefined) {
+    return;
+  }
+
+  if (Date.parse(laterValue) < Date.parse(earlierValue)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${laterField} must not be before ${earlierField}`,
+      path: [laterField]
+    });
   }
 }

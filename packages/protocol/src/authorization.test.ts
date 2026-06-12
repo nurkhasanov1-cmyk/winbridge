@@ -482,6 +482,181 @@ describe("session authorization state machine", () => {
     });
   });
 
+  it("rejects lifecycle timestamp sequences that contradict authorization transitions", () => {
+    const approved = approveSessionAuthorization(pending(), {
+      grantedPermissions: ["screen:view", "input:pointer"],
+      now: new Date("2026-06-11T00:01:00.000Z")
+    });
+    const active = activateSessionAuthorization(approved, {
+      visibleToHost: true,
+      now: new Date("2026-06-11T00:02:00.000Z")
+    });
+    const paused = pauseSessionAuthorization(active, {
+      now: new Date("2026-06-11T00:03:00.000Z")
+    });
+    const resumed = resumeSessionAuthorization(paused, {
+      now: new Date("2026-06-11T00:04:00.000Z")
+    });
+    const terminated = terminateSessionAuthorization(resumed, {
+      reason: "Host disconnected",
+      now: new Date("2026-06-11T00:05:00.000Z")
+    });
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...active,
+        approvedAt: "2026-06-11T00:03:00.000Z",
+        updatedAt: "2026-06-11T00:03:00.000Z"
+      })
+    ).toThrow("activatedAt must not be before approvedAt");
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...resumed,
+        resumedAt: "2026-06-11T00:02:30.000Z"
+      })
+    ).toThrow("resumedAt must not be before pausedAt");
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...terminated,
+        terminatedAt: "2026-06-11T00:01:30.000Z"
+      })
+    ).toThrow("terminatedAt must not be before activatedAt");
+  });
+
+  it("rejects live authorization records with fail-closed lifecycle timestamps", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: new Date("2026-06-11T00:01:00.000Z")
+      }),
+      {
+        visibleToHost: true,
+        now: new Date("2026-06-11T00:02:00.000Z")
+      }
+    );
+    const paused = pauseSessionAuthorization(active, {
+      now: new Date("2026-06-11T00:03:00.000Z")
+    });
+
+    for (const authorization of [active, paused]) {
+      for (const field of ["deniedAt", "terminatedAt", "expiredAt"] as const) {
+        expect(() =>
+          SessionAuthorizationSchema.parse({
+            ...authorization,
+            [field]: "2026-06-11T00:04:00.000Z",
+            updatedAt: "2026-06-11T00:04:00.000Z"
+          })
+        ).toThrow(`${authorization.status} session authorization cannot include ${field}`);
+      }
+    }
+  });
+
+  it("rejects terminal authorization records with conflicting terminal timestamps", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: new Date("2026-06-11T00:01:00.000Z")
+      }),
+      {
+        visibleToHost: true,
+        now: new Date("2026-06-11T00:02:00.000Z")
+      }
+    );
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: new Date("2026-06-11T00:03:00.000Z")
+    });
+    const terminated = terminateSessionAuthorization(active, {
+      reason: "Host disconnected",
+      now: new Date("2026-06-11T00:03:00.000Z")
+    });
+    const expired = expireSessionAuthorization(active, new Date("2026-06-11T00:31:00.000Z"));
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...revoked,
+        terminatedAt: "2026-06-11T00:04:00.000Z",
+        updatedAt: "2026-06-11T00:04:00.000Z"
+      })
+    ).toThrow("revoked session authorization cannot include terminatedAt");
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...terminated,
+        expiredAt: "2026-06-11T00:04:00.000Z",
+        updatedAt: "2026-06-11T00:04:00.000Z"
+      })
+    ).toThrow("terminated session authorization cannot include expiredAt");
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...expired,
+        terminatedAt: "2026-06-11T00:30:00.000Z"
+      })
+    ).toThrow("expired session authorization cannot include terminatedAt");
+  });
+
+  it("accepts ordered partial revocation timestamps while denying revoked permissions", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view", "input:pointer"],
+        now: new Date("2026-06-11T00:01:00.000Z")
+      }),
+      {
+        visibleToHost: true,
+        now: new Date("2026-06-11T00:02:00.000Z")
+      }
+    );
+    const partialRevocation = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: new Date("2026-06-11T00:03:00.000Z")
+    });
+
+    expect(SessionAuthorizationSchema.parse(partialRevocation)).toMatchObject({
+      status: "active",
+      permissions: ["input:pointer"],
+      approvedAt: "2026-06-11T00:01:00.000Z",
+      activatedAt: "2026-06-11T00:02:00.000Z",
+      revokedAt: "2026-06-11T00:03:00.000Z"
+    });
+    expect(() =>
+      assertSessionActionAuthorized({
+        authorization: partialRevocation,
+        permission: "screen:view",
+        now: new Date("2026-06-11T00:03:00.000Z")
+      })
+    ).toThrow("requested permission");
+    expect(
+      assertSessionActionAuthorized({
+        authorization: partialRevocation,
+        permission: "input:pointer",
+        now: new Date("2026-06-11T00:03:00.000Z")
+      }).status
+    ).toBe("active");
+
+    const pausedAfterPartialRevocation = pauseSessionAuthorization(partialRevocation, {
+      now: new Date("2026-06-11T00:04:00.000Z")
+    });
+    const resumedAfterPartialRevocation = resumeSessionAuthorization(pausedAfterPartialRevocation, {
+      now: new Date("2026-06-11T00:05:00.000Z")
+    });
+
+    expect(SessionAuthorizationSchema.parse(resumedAfterPartialRevocation)).toMatchObject({
+      status: "active",
+      permissions: ["input:pointer"],
+      revokedAt: "2026-06-11T00:03:00.000Z",
+      pausedAt: "2026-06-11T00:04:00.000Z",
+      resumedAt: "2026-06-11T00:05:00.000Z"
+    });
+    expect(
+      assertSessionActionAuthorized({
+        authorization: resumedAfterPartialRevocation,
+        permission: "input:pointer",
+        now: new Date("2026-06-11T00:05:00.000Z")
+      }).status
+    ).toBe("active");
+  });
+
   it("requires auditable resume history for parsed active authorization records", () => {
     const active = activateSessionAuthorization(
       approveSessionAuthorization(pending(), {
