@@ -67,6 +67,36 @@ describe("audit records", () => {
     ).toThrow();
   });
 
+  it("redacts sensitive top-level audit reasons", () => {
+    for (const reason of [
+      "Authorization: Bearer raw-token-secret",
+      "Authorization: raw-token-secret",
+      "Proxy-Authorization: raw-proxy-token",
+      "private close token raw-close-token"
+    ]) {
+      const record = createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.rejected",
+        outcome: "failed",
+        reason
+      });
+
+      expect(record.reason).toBe("[REDACTED]");
+      expect(JSON.stringify(record)).not.toContain(reason);
+    }
+  });
+
+  it("preserves safe bounded top-level audit reasons", () => {
+    const record = createAuditRecord({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      reason: "Pairing code mismatch"
+    });
+
+    expect(record.reason).toBe("Pairing code mismatch");
+  });
+
   it("redacts sensitive audit detail fields", () => {
     const redacted = redactAuditDetail({
       token: "secret-token",

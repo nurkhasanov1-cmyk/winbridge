@@ -201,7 +201,7 @@ The agent shell can write local host workflow audit records to JSONL when `WINBR
 
 Configured relay or agent audit file paths must be non-blank. Omitted audit paths keep the documented development fallback behavior, but empty or whitespace-only configured paths fail before relay peer acceptance or agent runtime startup.
 
-File audit records use the same schema validation and redaction as memory and console sinks. Write failures are surfaced to the caller instead of silently dropping records.
+File audit records use the same schema validation and redaction as memory and console sinks. Top-level audit reasons that contain obvious sensitive material are redacted before records are returned, emitted, or persisted. Write failures are surfaced to the caller instead of silently dropping records.
 
 Development audit files must not contain raw tokens, raw pairing codes, credentials, API keys, authorization headers, auth headers, cookies, private keys, keystrokes, screenshots, screen contents, or full secrets.
 Audit detail redaction preserves non-secret lifecycle identifiers such as `authorizationId` while redacting obvious authentication/session secret keys.

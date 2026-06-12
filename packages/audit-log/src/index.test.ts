@@ -157,6 +157,30 @@ describe("FileAuditSink", () => {
     }
   });
 
+  it("redacts sensitive top-level reasons before writing JSONL records", () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "audit.jsonl");
+    const sink = new FileAuditSink(path);
+
+    try {
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.rejected",
+        outcome: "failed",
+        reason: "Authorization: raw-token-secret",
+        detail: {
+          messageType: "signal"
+        }
+      });
+
+      const content = readFileSync(path, "utf8");
+      expect(content).not.toContain("raw-token-secret");
+      expect(JSON.parse(content).reason).toBe("[REDACTED]");
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it("redacts expanded authentication keys before writing JSONL records", () => {
     const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
     const path = join(root, "audit.jsonl");

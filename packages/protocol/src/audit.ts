@@ -53,12 +53,19 @@ const sensitiveKeySubstrings = [
 ] as const;
 const sensitiveKeyExactMatches = new Set(["authorization"]);
 const nonSensitiveKeyExactMatches = new Set(["authorizationid"]);
+const REDACTED_AUDIT_VALUE = "[REDACTED]";
+const safeAuditReasons = new Set(["Pairing code mismatch"]);
+const sensitiveReasonMarkerPattern =
+  /\b(?:token|credential|password|secret|pairing[\s_-]*code|api[\s_-]*key|authorization|proxy[\s_-]*authorization|authorization[\s_-]*header|auth[\s_-]*header|cookie|private[\s_-]*key|keystroke|screenshot|screen[\s_-]*data|screen[\s_-]*content)\b\s*(?::|=|\s+)\s*\S+/i;
+const sensitiveReasonCredentialPattern = /\b(?:bearer|basic)\s+[a-z0-9._~+/=-]+/i;
+const sensitiveReasonPrivateKeyPattern = /-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
 
 export function createAuditRecord(input: AuditRecordInput): AuditRecord {
   return AuditRecordSchema.parse({
     ...input,
     eventId: input.eventId ?? `audit_${randomUUID()}`,
     timestamp: input.timestamp ?? new Date().toISOString(),
+    reason: redactAuditReason(input.reason),
     detail: redactAuditDetail(input.detail ?? {})
   });
 }
@@ -69,7 +76,7 @@ export function redactAuditDetail(detail: Record<string, unknown>): Record<strin
 
 function redactValue(value: unknown, key?: string): unknown {
   if (key && isSensitiveAuditDetailKey(key)) {
-    return "[REDACTED]";
+    return REDACTED_AUDIT_VALUE;
   }
 
   if (Array.isArray(value)) {
@@ -86,6 +93,26 @@ function redactValue(value: unknown, key?: string): unknown {
   }
 
   return value;
+}
+
+function redactAuditReason(reason: string | undefined): string | undefined {
+  if (reason === undefined) {
+    return undefined;
+  }
+
+  return isSensitiveAuditReason(reason) ? REDACTED_AUDIT_VALUE : reason;
+}
+
+function isSensitiveAuditReason(reason: string): boolean {
+  if (safeAuditReasons.has(reason)) {
+    return false;
+  }
+
+  return (
+    sensitiveReasonMarkerPattern.test(reason) ||
+    sensitiveReasonCredentialPattern.test(reason) ||
+    sensitiveReasonPrivateKeyPattern.test(reason)
+  );
 }
 
 function isSensitiveAuditDetailKey(key: string): boolean {
