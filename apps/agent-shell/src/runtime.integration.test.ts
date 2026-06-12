@@ -4445,6 +4445,123 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("accepts revoke confirmation after revoke control without restoring viewer signal access", async () => {
+    const revokeConfirmationServer = await startViewerAuthorizationLifecycleServer(() => {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+
+      return [
+        {
+          ...createMessageBase("session-demo"),
+          type: "relay-ready",
+          peerId: "viewer-1",
+          roomSize: 2
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz_revoke_confirmation",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: ["screen:view"],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz_revoke_confirmation",
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: ["screen:view"],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-control",
+          authorizationId: "authz_revoke_confirmation",
+          actorPeerId: "host-1",
+          action: "revoke-permission",
+          permission: "screen:view",
+          reason: "private revoke control reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "permission-revoked",
+          authorizationId: "authz_revoke_confirmation",
+          actorPeerId: "host-1",
+          revokedPermission: "screen:view",
+          reason: "private revoke confirmation reason raw-token"
+        }
+      ];
+    });
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        revokeConfirmationServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      const activeState = await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.authorizationId === "authz_revoke_confirmation" &&
+          message.status === "active" &&
+          message.visibleToHost
+      );
+      await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-control" &&
+          message.authorizationId === "authz_revoke_confirmation" &&
+          message.action === "revoke-permission"
+      );
+      const revokeConfirmation = await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "permission-revoked" &&
+          message.authorizationId === "authz_revoke_confirmation"
+      );
+
+      expect(activeState).toMatchObject({
+        type: "session-authorization-state",
+        authorizationId: "authz_revoke_confirmation",
+        actorPeerId: "host-1",
+        status: "active",
+        visibleToHost: true,
+        permissions: ["screen:view"]
+      });
+      expect(revokeConfirmation).toMatchObject({
+        type: "permission-revoked",
+        authorizationId: "authz_revoke_confirmation",
+        actorPeerId: "host-1",
+        revokedPermission: "screen:view",
+        reason: "[REDACTED]"
+      });
+
+      await expectViewerSignalSendBlocked(
+        viewer,
+        viewerEvents,
+        "blocked-after-revoke-confirmation-payload",
+        viewerLogs
+      );
+      expect(JSON.stringify(revokeConfirmation)).not.toContain("private revoke confirmation reason");
+      expect(JSON.stringify(viewerEvents)).not.toContain("private revoke confirmation reason");
+      expect(JSON.stringify(viewerEvents)).not.toContain("raw-token");
+      expect(viewerLogs.join("\n")).not.toContain("private revoke confirmation reason");
+      expect(viewerLogs.join("\n")).not.toContain("raw-token");
+    } finally {
+      await viewer?.stop();
+      await revokeConfirmationServer.stop();
+    }
+  });
+
   it("fails closed for viewer signal sends after revoke, pause, termination, or expiration", async () => {
     const scenarios: Array<{
       name: string;
