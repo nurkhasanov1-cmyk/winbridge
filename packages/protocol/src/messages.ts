@@ -190,6 +190,14 @@ export const SessionAuthorizationStateMessageSchema = BaseMessageSchema.extend({
     });
   }
 
+  if ((message.status === "pending" || message.status === "approved") && message.visibleToHost) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${message.status} session authorization state cannot be visible before activation`,
+      path: ["visibleToHost"]
+    });
+  }
+
   const grantBearingState =
     message.status === "approved" || message.status === "active" || message.status === "paused";
 

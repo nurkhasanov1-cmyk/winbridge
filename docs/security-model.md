@@ -60,6 +60,8 @@ Remote assistance authorization is deny-by-default:
 
 Pairing is only a prerequisite relationship. It never grants screen viewing, pointer input, keyboard input, clipboard access, file transfer, or diagnostics by itself.
 
+Pending and approved authorization records must not report host visible active-session state. Host visibility begins at activation, not at request or approval.
+
 Protocol messages for session authorization lifecycle are explicit:
 
 - `session-authorization-request`: viewer asks for scoped permissions.

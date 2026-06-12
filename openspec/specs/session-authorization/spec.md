@@ -34,7 +34,7 @@ The system SHALL activate a remote assistance session only when host consent is 
 - **THEN** the system marks the authorization active until expiration, revoke, or termination
 
 ### Requirement: Scoped action authorization
-The system SHALL authorize sensitive remote actions only when the session is active, visible, unexpired, not revoked, and includes the requested permission.
+The system SHALL authorize sensitive remote actions only when the session is active, visible, unexpired, not revoked, and includes the requested permission. Pending and approved authorizations MUST NOT report host visible active-session state before activation.
 
 #### Scenario: Requested permission is not granted
 - **WHEN** a viewer requests a sensitive action that is not in the active grant
@@ -43,6 +43,14 @@ The system SHALL authorize sensitive remote actions only when the session is act
 #### Scenario: Active grant contains permission
 - **WHEN** a viewer requests a sensitive action included in an active visible unexpired grant
 - **THEN** the system authorizes the action
+
+#### Scenario: Pending authorization reports visible state
+- **WHEN** a pending authorization record reports `visibleToHost` as true
+- **THEN** the schema rejects the record before any remote action check can use it
+
+#### Scenario: Approved authorization reports visible state
+- **WHEN** an approved authorization record reports `visibleToHost` as true
+- **THEN** the schema rejects the record because host visibility only applies after activation
 
 ### Requirement: Revoke and terminate fail closed
 The system SHALL immediately deny remote action checks after host denial, host revocation, permission revocation, expiration, or session termination. Terminal authorization records with status `denied`, `revoked`, `terminated`, or `expired` MUST NOT carry permissions.
@@ -162,6 +170,10 @@ The system SHALL reject malformed session authorization records during schema pa
 #### Scenario: Paused authorization is not visible
 - **WHEN** a paused authorization record is not visible to the host
 - **THEN** the schema rejects the record so host pause cannot be represented as hidden remote access
+
+#### Scenario: Pre-active authorization is visible
+- **WHEN** a pending or approved authorization record reports host visible state
+- **THEN** the schema rejects the record so pre-active consent cannot be confused with an active visible session
 
 #### Scenario: Lifecycle state lacks required timestamp
 - **WHEN** a denied, approved, active, paused, revoked, terminated, or expired authorization record lacks its corresponding lifecycle timestamp

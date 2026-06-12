@@ -603,6 +603,43 @@ describe("protocol envelopes", () => {
     ).toThrow();
   });
 
+  it("rejects pre-active session authorization state updates that report host visibility", () => {
+    const approved = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "session-authorization-state",
+      authorizationId: "authz-demo",
+      actorPeerId: "host-1",
+      status: "approved",
+      visibleToHost: false,
+      permissions: ["screen:view"],
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+
+    expect(approved).toMatchObject({
+      type: "session-authorization-state",
+      status: "approved",
+      visibleToHost: false
+    });
+
+    for (const state of [
+      { status: "pending", permissions: [] },
+      { status: "approved", permissions: ["screen:view"] }
+    ] as const) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz-demo",
+          actorPeerId: "host-1",
+          status: state.status,
+          visibleToHost: true,
+          permissions: state.permissions,
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
+        })
+      ).toThrow("cannot be visible before activation");
+    }
+  });
+
   it("rejects grant-bearing state updates without permissions", () => {
     expect(() =>
       parseProtocolEnvelope({

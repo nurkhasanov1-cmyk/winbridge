@@ -292,6 +292,27 @@ describe("session authorization state machine", () => {
     ).toThrow("visible to host");
   });
 
+  it("rejects pending or approved authorization records with pre-active host visibility", () => {
+    const pendingAuthorization = pending();
+    const approved = approveSessionAuthorization(pendingAuthorization, {
+      grantedPermissions: ["screen:view"],
+      now: baseTime
+    });
+
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...pendingAuthorization,
+        visibleToHost: true
+      })
+    ).toThrow("cannot be visible before activation");
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...approved,
+        visibleToHost: true
+      })
+    ).toThrow("cannot be visible before activation");
+  });
+
   it("requires lifecycle timestamps for parsed authorization records", () => {
     const approved = approveSessionAuthorization(pending(), {
       grantedPermissions: ["screen:view"],

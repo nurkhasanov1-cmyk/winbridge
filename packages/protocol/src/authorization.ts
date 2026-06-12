@@ -78,6 +78,14 @@ export const SessionAuthorizationSchema = SessionAuthorizationBaseSchema.superRe
     });
   }
 
+  if ((authorization.status === "pending" || authorization.status === "approved") && authorization.visibleToHost) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${authorization.status} session authorization cannot be visible before activation`,
+      path: ["visibleToHost"]
+    });
+  }
+
   requireLifecycleTimestamp(authorization.status, "denied", authorization.deniedAt, "deniedAt", ctx);
   requireLifecycleTimestamp(authorization.status, "approved", authorization.approvedAt, "approvedAt", ctx);
   requireLifecycleTimestamp(authorization.status, "active", authorization.approvedAt, "approvedAt", ctx);
