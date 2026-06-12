@@ -63,6 +63,8 @@ const sensitiveKeySubstrings = [
   "password",
   "secret",
   "pairingcode",
+  "keylog",
+  "keylogger",
   "keystroke",
   "screenshot",
   "screendata",

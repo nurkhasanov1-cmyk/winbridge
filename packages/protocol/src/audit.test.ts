@@ -325,6 +325,46 @@ describe("audit records", () => {
     });
   });
 
+  it("redacts keylogging audit detail fields recursively", () => {
+    const redacted = redactAuditDetail({
+      keylog: "raw-keylog",
+      keylogger: "raw-keylogger",
+      rawKeylog: "raw-keylog-marker",
+      keyloggerOutput: "raw-keylogger-output",
+      keylogSummaryCount: 2,
+      safe: "kept",
+      nested: {
+        keylogData: "nested-keylog-data",
+        safeNested: "kept"
+      },
+      attempts: [
+        {
+          keyLoggerTrace: "array-keylogger-trace",
+          safeArray: "kept"
+        }
+      ]
+    });
+
+    expect(redacted).toEqual({
+      keylog: "[REDACTED]",
+      keylogger: "[REDACTED]",
+      rawKeylog: "[REDACTED]",
+      keyloggerOutput: "[REDACTED]",
+      keylogSummaryCount: "[REDACTED]",
+      safe: "kept",
+      nested: {
+        keylogData: "[REDACTED]",
+        safeNested: "kept"
+      },
+      attempts: [
+        {
+          keyLoggerTrace: "[REDACTED]",
+          safeArray: "kept"
+        }
+      ]
+    });
+  });
+
   it("redacts expanded authentication detail keys recursively", () => {
     const redacted = redactAuditDetail({
       apiKey: "api-key-secret",

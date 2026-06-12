@@ -351,6 +351,39 @@ describe("FileAuditSink", () => {
     }
   });
 
+  it("redacts keylogging detail fields before writing JSONL records", () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "audit.jsonl");
+    const sink = new FileAuditSink(path);
+
+    try {
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.rejected",
+        outcome: "failed",
+        detail: {
+          keylog: "raw-keylog",
+          rawKeylog: "raw-keylog-marker",
+          keyloggerOutput: "raw-keylogger-output",
+          safeCounter: 2
+        }
+      });
+
+      const content = readFileSync(path, "utf8");
+      expect(content).not.toContain("raw-keylog");
+      expect(content).not.toContain("raw-keylog-marker");
+      expect(content).not.toContain("raw-keylogger-output");
+      expect(JSON.parse(content).detail).toEqual({
+        keylog: "[REDACTED]",
+        rawKeylog: "[REDACTED]",
+        keyloggerOutput: "[REDACTED]",
+        safeCounter: 2
+      });
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it("redacts sensitive top-level reasons before writing JSONL records", () => {
     const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
     const path = join(root, "audit.jsonl");
