@@ -38,6 +38,7 @@ const MAX_RELAY_MESSAGE_BYTES = 64 * 1024;
 export const MAX_RELAY_SHARED_TOKEN_BYTES = 1024;
 const RELAY_MESSAGE_TOO_LARGE_REASON = `Relay message exceeds ${MAX_RELAY_MESSAGE_BYTES} bytes`;
 const GENERIC_RELAY_REJECTION_REASON = "Invalid relay message";
+const RELAY_TOKEN_NOT_CONFIGURED_CLOSE_REASON = "Relay token is not configured";
 const RELAY_SHARED_TOKEN_ERROR_MESSAGE =
   "WINBRIDGE_RELAY_SHARED_TOKEN must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
 const SAFE_RELAY_REJECTION_REASONS = new Set([
@@ -111,6 +112,24 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
     const token = readSingleRelayToken(requestUrl);
     const remoteKey = request.socket.remoteAddress ?? "unknown-remote";
 
+    if (!sharedToken && token.presented) {
+      const decision = invalidTokenLimiter.consume(remoteKey);
+      writeRelayAudit(auditSink, {
+        action: "relay.token.denied",
+        outcome: "denied",
+        detail: {
+          accessPresented: true,
+          accessConfigured: false,
+          rateLimit: rateLimitAuditDetail(decision)
+        }
+      });
+      socket.close(
+        1008,
+        decision.allowed ? RELAY_TOKEN_NOT_CONFIGURED_CLOSE_REASON : "Relay token rate limit exceeded"
+      );
+      return;
+    }
+
     if (sharedToken && token.value !== sharedToken) {
       const decision = invalidTokenLimiter.consume(remoteKey);
       writeRelayAudit(auditSink, {
@@ -118,6 +137,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
         outcome: "denied",
         detail: {
           accessPresented: token.presented,
+          accessConfigured: true,
           rateLimit: rateLimitAuditDetail(decision)
         }
       });

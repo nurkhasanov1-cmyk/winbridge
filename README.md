@@ -71,7 +71,8 @@ npm run dev:relay
 Omit `WINBRIDGE_RELAY_SHARED_TOKEN` for local development mode. Do not set it to an empty, whitespace-only, control-character, or oversized value.
 When a relay shared token is configured, pass the same bounded value to the agent shell with `--token`; do not embed relay tokens or credentials in `--relay` URLs.
 Development shared-token values must be 1024 UTF-8 bytes or less and must not contain ASCII control characters.
-Direct development relay clients must present exactly one matching `token` query parameter; missing, duplicate, or wrong token parameters are rejected before session join.
+Direct development relay clients must present exactly one matching `token` query parameter when a shared token is configured; missing, duplicate, or wrong token parameters are rejected before session join.
+When shared-token configuration is omitted, direct clients must also omit `token` query parameters; token-bearing connections are rejected before session join instead of being silently treated as authorized.
 
 Configure the local relay port with an exact integer TCP port:
 

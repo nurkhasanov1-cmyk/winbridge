@@ -1257,6 +1257,62 @@ describe("relay runtime integration", () => {
     );
   });
 
+  it("rejects token query parameters when no shared token is configured without logging raw tokens", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const cases = [
+      {
+        name: "single token",
+        query: "token=unexpected-token%20single-token-marker",
+        markers: ["unexpected-token", "single-token-marker"]
+      },
+      {
+        name: "duplicate tokens",
+        query: "token=unexpected-token%20duplicate-token-marker&token=second-token%20second-token-marker",
+        markers: [
+          "unexpected-token",
+          "duplicate-token-marker",
+          "second-token",
+          "second-token-marker"
+        ]
+      }
+    ];
+
+    for (const { name, query, markers } of cases) {
+      const auditStart = auditSink.records().length;
+      const socket = await openSocket(`${runtime.url()}?${query}`);
+
+      const close = await waitForClose(socket);
+      expect(close, name).toEqual({
+        code: 1008,
+        reason: "Relay token is not configured"
+      });
+
+      const denied = auditSink
+        .records()
+        .slice(auditStart)
+        .find((record) => record.action === "relay.token.denied");
+      expect(denied, name).toBeDefined();
+      expect(denied?.detail, name).toMatchObject({
+        accessPresented: true,
+        accessConfigured: false
+      });
+      expect(
+        auditSink
+          .records()
+          .slice(auditStart)
+          .some((record) => record.action === "relay.peer.join.accepted"),
+        name
+      ).toBe(false);
+
+      const serialized = JSON.stringify(denied);
+      for (const marker of markers) {
+        expect(serialized, name).not.toContain(marker);
+        expect(close.reason, name).not.toContain(marker);
+      }
+    }
+  });
+
   it("audits invalid shared-token attempts without logging the raw token", async () => {
     const auditSink = new MemoryAuditSink();
     const configuredToken = "correct-token configured-token-marker";

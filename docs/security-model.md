@@ -42,7 +42,7 @@ Protocol pairing ticket factory inputs are bounded before ticket creation. TTL v
 The development relay creates pairing tickets when the host joins a room. Viewer joins must consume that host-created ticket before relay registration. Viewer-first, mismatched, expired, or consumed tickets are rejected before message forwarding.
 Pairing ticket TTL and maximum-use configuration is bounded and parsed as exact integers; malformed, empty, partial, negative, non-finite, null, or out-of-range configured values fail before the relay accepts peers or creates host pairing tickets.
 
-When `WINBRIDGE_RELAY_SHARED_TOKEN` is configured, it must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters; peers without exactly one matching `token` query parameter are rejected before room registration. Missing, duplicate, or wrong token parameters fail closed with bounded denial handling. Omitted token configuration keeps the relay in documented development mode; empty, whitespace-only, control-character, non-string runtime, or oversized configured tokens fail before accepting peers.
+When `WINBRIDGE_RELAY_SHARED_TOKEN` is configured, it must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters; peers without exactly one matching `token` query parameter are rejected before room registration. Missing, duplicate, or wrong token parameters fail closed with bounded denial handling. Omitted token configuration keeps the relay in documented development mode, and token-bearing connections are rejected before room registration instead of being silently treated as authorized. Empty, whitespace-only, control-character, non-string runtime, or oversized configured tokens fail before accepting peers.
 
 Unexpected relay CLI startup/shutdown errors are metadata-only and expose generic error text plus safe message-byte diagnostics, not raw exception messages, stacks, tokens, pairing codes, protocol payloads, or local file paths.
 
@@ -162,7 +162,7 @@ This is not production identity. Production pairing needs durable storage, accou
 
 ## Development Relay Abuse Protection
 
-The development relay includes in-memory rate limiting for repeated invalid shared-token attempts and malformed or rejected protocol messages.
+The development relay includes in-memory rate limiting for repeated invalid or unconfigured shared-token attempts and malformed or rejected protocol messages.
 
 Relay startup validates environment-derived and injected local TCP ports before opening a listener. Malformed, partial, negative, fractional, non-finite, or out-of-range port values fail before network binding.
 
