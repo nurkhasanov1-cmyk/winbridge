@@ -105,16 +105,15 @@ describe("relay runtime integration", () => {
       candidates: [{ candidate: "raw-forwarded-signal-candidate" }],
       safeMarker: privateMarker
     };
+    const signal = {
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: signalPayload
+    } as const;
 
-    host.send(
-      encodeProtocolEnvelope({
-        ...createMessageBase("session-demo"),
-        type: "signal",
-        fromPeerId: "host-1",
-        toPeerId: "viewer-1",
-        payload: signalPayload
-      })
-    );
+    host.send(encodeProtocolEnvelope(signal));
 
     expect(await waitForProtocolMessage(viewer, (message) => message.type === "signal")).toMatchObject({
       type: "signal",
@@ -139,6 +138,7 @@ describe("relay runtime integration", () => {
       sessionId: "session-demo",
       detail: {
         messageType: "signal",
+        messageId: signal.messageId,
         authorizationId,
         recipientPeerId: "viewer-1",
         recipientRole: "viewer"
@@ -146,6 +146,7 @@ describe("relay runtime integration", () => {
     });
     expect(forwarded.detail).toEqual({
       messageType: "signal",
+      messageId: signal.messageId,
       authorizationId,
       recipientPeerId: "viewer-1",
       recipientRole: "viewer"
@@ -1013,16 +1014,15 @@ describe("relay runtime integration", () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
     const { host, viewer } = await joinPairedSession(runtime);
+    const request = {
+      ...createMessageBase("session-demo"),
+      type: "host-consent-required",
+      viewerPeerId: "viewer-1",
+      viewerDisplayName: "Viewer Private Display",
+      requestedPermissions: ["screen:view"]
+    } as const;
 
-    viewer.send(
-      encodeProtocolEnvelope({
-        ...createMessageBase("session-demo"),
-        type: "host-consent-required",
-        viewerPeerId: "viewer-1",
-        viewerDisplayName: "Viewer Private Display",
-        requestedPermissions: ["screen:view"]
-      })
-    );
+    viewer.send(encodeProtocolEnvelope(request));
 
     expect(
       await waitForProtocolMessage(host, (message) => message.type === "host-consent-required")
@@ -1047,12 +1047,14 @@ describe("relay runtime integration", () => {
       sessionId: "session-demo",
       detail: {
         messageType: "host-consent-required",
+        messageId: request.messageId,
         recipientPeerId: "host-1",
         recipientRole: "host"
       }
     });
     expect(forwarded.detail).toEqual({
       messageType: "host-consent-required",
+      messageId: request.messageId,
       recipientPeerId: "host-1",
       recipientRole: "host"
     });

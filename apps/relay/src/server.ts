@@ -583,6 +583,7 @@ function acceptedForwardAuditDetail(
 ): Record<string, unknown> {
   const detail: Record<string, unknown> = {
     messageType: envelope.type,
+    messageId: envelope.messageId,
     recipientPeerId: recipient.peerId,
     recipientRole: recipient.role
   };
