@@ -258,9 +258,12 @@ function handleMessage(
   }
 
   if (envelope.sessionId !== options.sessionId) {
-    const byteLength = Buffer.byteLength(text);
-    options.onEvent?.({ direction: "raw", text: REDACTED_EVENT_VALUE, byteLength });
-    options.logger?.log(`[winbridge-agent] ignored cross-session protocol message bytes=${byteLength}`);
+    reportIgnoredUnsafeProtocolMessage(text, options);
+    return;
+  }
+
+  if (isSelfReferentialAuthorizationRequest(envelope, options)) {
+    reportIgnoredUnsafeProtocolMessage(text, options);
     return;
   }
 
@@ -290,6 +293,22 @@ function handleMessage(
   } catch (error) {
     reportRuntimeError(options, error);
   }
+}
+
+function isSelfReferentialAuthorizationRequest(
+  envelope: ProtocolEnvelope,
+  options: AgentShellRuntimeOptions
+): boolean {
+  return envelope.type === "session-authorization-request" && envelope.viewerPeerId === options.peerId;
+}
+
+function reportIgnoredUnsafeProtocolMessage(
+  text: string,
+  options: AgentShellRuntimeOptions
+): void {
+  const byteLength = Buffer.byteLength(text);
+  options.onEvent?.({ direction: "raw", text: REDACTED_EVENT_VALUE, byteLength });
+  options.logger?.log(`[winbridge-agent] ignored unsafe inbound protocol message bytes=${byteLength}`);
 }
 
 function sendHelloOnce(

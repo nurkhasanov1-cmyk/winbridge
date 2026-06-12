@@ -106,6 +106,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode can send approval or denial only with explicit `--host-decision`.
 - Host mode emits active state only when `--visible-session true` is also provided.
 - Inbound protocol messages whose session id does not match the local runtime session are ignored before local received-event emission or consent workflow handling.
+- Inbound authorization requests that identify the local host peer as the viewer are ignored before local received-event emission or consent workflow handling.
 - CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded credentials or `token` query values, malformed protocol identifier, malformed permission, malformed pairing, malformed lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
 - The managed runtime also rejects malformed direct options before relay startup, including non-WebSocket relay URLs, relay URLs with embedded credentials or `token` query values, malformed identifiers, malformed tokens, duplicate or invalid permissions, non-boolean visible-session flags, unsafe workflow timers, and blank or oversized decision/lifecycle reasons. Relay shared tokens use the dedicated `--token`/runtime token path and are bounded before connection setup.
 - Host mode can simulate permission revocation only after explicit visible approval with `--revoke-after-ms` and `--revoke-permission`.

@@ -376,7 +376,7 @@ describe("agent shell consent workflow", () => {
 
       const serializedEvents = JSON.stringify(hostEvents);
       const logOutput = hostLogs.join("\n");
-      expect(logOutput).toContain("ignored cross-session protocol message bytes=");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
       expect(logOutput).not.toContain("session-authorization-request");
       expect(logOutput).not.toContain("other-session");
       expect(logOutput).not.toContain("private cross-session reason");
@@ -386,6 +386,60 @@ describe("agent shell consent workflow", () => {
     } finally {
       await host?.stop();
       await crossSessionServer.stop();
+    }
+  });
+
+  it("ignores authorization requests that identify the local host as viewer", async () => {
+    const selfRequestServer = await startSelfReferentialAuthorizationRequestServer();
+    const hostEvents: AgentShellEvent[] = [];
+    const hostLogs: string[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: selfRequestServer.url,
+        hostDecision: "approve",
+        visibleToHost: true,
+        logger: captureLogger(hostLogs),
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+
+      const rawEvent = await waitForRawEvent(hostEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(rawEvent.byteLength).toBeGreaterThan(0);
+      expect(hostEvents.some((event) => event.direction === "received")).toBe(false);
+      expect(
+        hostEvents.some(
+          (event) =>
+            event.direction === "sent" &&
+            (event.message.type === "session-authorization-decision" ||
+              event.message.type === "session-authorization-state" ||
+              event.message.type === "audit-event")
+        )
+      ).toBe(false);
+
+      const rawEvents = hostEvents.filter((event) => event.direction === "raw");
+      const serializedRawEvents = JSON.stringify(rawEvents);
+      const logOutput = hostLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("session-authorization-request");
+      expect(logOutput).not.toContain("host-1");
+      expect(logOutput).not.toContain("private self-viewer reason");
+      expect(logOutput).not.toContain("raw-token");
+      expect(serializedRawEvents).not.toContain("session-authorization-request");
+      expect(serializedRawEvents).not.toContain("host-1");
+      expect(serializedRawEvents).not.toContain("private self-viewer reason");
+      expect(serializedRawEvents).not.toContain("raw-token");
+    } finally {
+      await host?.stop();
+      await selfRequestServer.stop();
     }
   });
 
@@ -2231,6 +2285,45 @@ async function startCrossSessionAuthorizationRequestServer(): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Cross-session request test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startSelfReferentialAuthorizationRequestServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "host-1",
+        requestedPermissions: ["screen:view"],
+        reason: "private self-viewer reason token raw-token"
+      }));
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Self-referential request test server did not expose a TCP port");
   }
 
   return {
