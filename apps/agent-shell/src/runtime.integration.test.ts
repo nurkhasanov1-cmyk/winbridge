@@ -832,6 +832,122 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("ignores host authorization requests before viewer peer binding", async () => {
+    const unboundRequestServer = await startUnboundHostAuthorizationRequestServer();
+    const hostEvents: AgentShellEvent[] = [];
+    const hostLogs: string[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: unboundRequestServer.url,
+        hostDecision: "approve",
+        visibleToHost: true,
+        logger: captureLogger(hostLogs),
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+
+      const rawEvent = await waitForRawEvent(hostEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(hostEvents.some((event) => event.direction === "received")).toBe(false);
+      expect(
+        hostEvents.some(
+          (event) =>
+            event.direction === "sent" &&
+            (event.message.type === "session-authorization-decision" ||
+              event.message.type === "session-authorization-state" ||
+              event.message.type === "audit-event")
+        )
+      ).toBe(false);
+
+      const serializedEvents = JSON.stringify(hostEvents);
+      const logOutput = hostLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("session-authorization-request");
+      expect(logOutput).not.toContain("viewer-1");
+      expect(logOutput).not.toContain("unbound request private reason");
+      expect(logOutput).not.toContain("raw-token");
+      expect(serializedEvents).not.toContain("session-authorization-request");
+      expect(serializedEvents).not.toContain("viewer-1");
+      expect(serializedEvents).not.toContain("unbound request private reason");
+      expect(serializedEvents).not.toContain("raw-token");
+    } finally {
+      await host?.stop();
+      await unboundRequestServer.stop();
+    }
+  });
+
+  it("ignores host authorization requests for a viewer that was not observed", async () => {
+    const mismatchedRequestServer = await startMismatchedHostAuthorizationRequestServer();
+    const hostEvents: AgentShellEvent[] = [];
+    const hostLogs: string[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: mismatchedRequestServer.url,
+        hostDecision: "approve",
+        visibleToHost: true,
+        logger: captureLogger(hostLogs),
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+
+      const observedHello = await waitForMessage(
+        hostEvents,
+        (message) => message.type === "hello" && message.peerId === "viewer-1"
+      );
+      const rawEvent = await waitForRawEvent(hostEvents);
+      await delay(100);
+
+      expect(observedHello).toMatchObject({
+        type: "hello",
+        peerId: "viewer-1",
+        role: "viewer"
+      });
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(
+        hostEvents.some(
+          (event) => event.direction === "received" && event.message.type === "session-authorization-request"
+        )
+      ).toBe(false);
+      expect(
+        hostEvents.some(
+          (event) =>
+            event.direction === "sent" &&
+            (event.message.type === "session-authorization-decision" ||
+              event.message.type === "session-authorization-state" ||
+              event.message.type === "audit-event")
+        )
+      ).toBe(false);
+
+      const serializedRawEvents = JSON.stringify(hostEvents.filter((event) => event.direction === "raw"));
+      const logOutput = hostLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("viewer-2");
+      expect(logOutput).not.toContain("mismatched request private reason");
+      expect(logOutput).not.toContain("raw-token");
+      expect(serializedRawEvents).not.toContain("session-authorization-request");
+      expect(serializedRawEvents).not.toContain("viewer-2");
+      expect(serializedRawEvents).not.toContain("mismatched request private reason");
+      expect(serializedRawEvents).not.toContain("raw-token");
+    } finally {
+      await host?.stop();
+      await mismatchedRequestServer.stop();
+    }
+  });
+
   it("ignores workflow authority messages that identify the local peer as actor", async () => {
     const selfAuthorityServer = await startSelfAuthorityWorkflowServer();
     const hostEvents: AgentShellEvent[] = [];
@@ -4337,6 +4453,14 @@ function sendRawViewerAuthorizationRequest(
 ): void {
   socket.send(encodeProtocolEnvelope({
     ...createMessageBase("session-demo"),
+    type: "hello",
+    peerId: "viewer-1",
+    role: "viewer",
+    displayName: "Raw Viewer",
+    capabilities: ["session:visible", "consent:required", "audit:stdout"]
+  }));
+  socket.send(encodeProtocolEnvelope({
+    ...createMessageBase("session-demo"),
     type: "session-authorization-request",
     viewerPeerId: "viewer-1",
     requestedPermissions,
@@ -5086,6 +5210,92 @@ async function startSelfReferentialAuthorizationRequestServer(): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Self-referential request test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startUnboundHostAuthorizationRequestServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view"],
+        reason: "unbound request private reason token raw-token"
+      }));
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Unbound request test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startMismatchedHostAuthorizationRequestServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "viewer-1",
+        role: "viewer",
+        displayName: "Viewer",
+        capabilities: ["session:visible", "consent:required"]
+      }));
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "viewer-2",
+        requestedPermissions: ["screen:view"],
+        reason: "mismatched request private reason token raw-token"
+      }));
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Mismatched request test server did not expose a TCP port");
   }
 
   return {

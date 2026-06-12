@@ -154,6 +154,8 @@ type HostWorkflowState = {
 type AgentShellSessionState = {
   remotePeerDisconnected: boolean;
   recipientAvailable: boolean;
+  observedPeerId?: string;
+  observedPeerRole?: SessionRole;
   helloSent: boolean;
   hostAuthorization?: RuntimeAuthorizationSnapshot;
   viewerAuthorization?: RuntimeAuthorizationSnapshot;
@@ -287,6 +289,8 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
 function resetConnectionScopedSessionState(sessionState: AgentShellSessionState): void {
   sessionState.remotePeerDisconnected = false;
   sessionState.recipientAvailable = false;
+  sessionState.observedPeerId = undefined;
+  sessionState.observedPeerRole = undefined;
   sessionState.helloSent = false;
   sessionState.hostAuthorization = undefined;
   sessionState.viewerAuthorization = undefined;
@@ -360,6 +364,11 @@ function handleMessage(
     return;
   }
 
+  if (isUnboundHostAuthorizationRequest(envelope, options, sessionState)) {
+    reportIgnoredUnsafeProtocolMessage(text, options);
+    return;
+  }
+
   if (isUnauthorizedHostInboundSignal(envelope, options, sessionState)) {
     reportIgnoredUnsafeProtocolMessage(text, options);
     return;
@@ -374,6 +383,8 @@ function handleMessage(
     if (envelope.type === "peer-disconnected") {
       sessionState.remotePeerDisconnected = true;
       sessionState.recipientAvailable = false;
+      sessionState.observedPeerId = undefined;
+      sessionState.observedPeerRole = undefined;
     }
 
     if (envelope.type === "relay-ready" && envelope.roomSize >= 2) {
@@ -387,6 +398,8 @@ function handleMessage(
 
     if (envelope.type === "hello") {
       sessionState.recipientAvailable = true;
+      sessionState.observedPeerId = envelope.peerId;
+      sessionState.observedPeerRole = envelope.role;
       sendHelloOnce(socket, options, sessionState);
     }
 
@@ -498,6 +511,18 @@ function isUntrustedViewerAuthorizationLifecycleMessage(
     default:
       return false;
   }
+}
+
+function isUnboundHostAuthorizationRequest(
+  envelope: ProtocolEnvelope,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): boolean {
+  return (
+    options.role === "host" &&
+    envelope.type === "session-authorization-request" &&
+    (sessionState.observedPeerRole !== "viewer" || sessionState.observedPeerId !== envelope.viewerPeerId)
+  );
 }
 
 function hasBoundViewerAuthorizationStateAuthority(
