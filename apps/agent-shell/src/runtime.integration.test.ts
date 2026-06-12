@@ -624,10 +624,10 @@ describe("agent shell consent workflow", () => {
       }));
       await host.start();
 
-      const rawEvents = await waitForRawEventCount(hostEvents, 5);
+      const rawEvents = await waitForRawEventCount(hostEvents, 6);
       await delay(100);
 
-      expect(rawEvents).toHaveLength(5);
+      expect(rawEvents).toHaveLength(6);
       for (const rawEvent of rawEvents) {
         expect(rawEvent).toMatchObject({
           direction: "raw",
@@ -641,7 +641,9 @@ describe("agent shell consent workflow", () => {
         hostEvents.some(
           (event) =>
             event.direction === "sent" &&
-            (event.message.type === "session-authorization-state" ||
+            (event.message.type === "host-consent-decision" ||
+              event.message.type === "session-authorization-decision" ||
+              event.message.type === "session-authorization-state" ||
               event.message.type === "session-control" ||
               event.message.type === "permission-revoked" ||
               event.message.type === "audit-event")
@@ -650,23 +652,27 @@ describe("agent shell consent workflow", () => {
 
       const serializedRawEvents = JSON.stringify(rawEvents);
       const logOutput = hostLogs.join("\n");
-      expect(logOutput.match(/ignored unsafe inbound protocol message bytes=/g)).toHaveLength(5);
+      expect(logOutput.match(/ignored unsafe inbound protocol message bytes=/g)).toHaveLength(6);
+      expect(logOutput).not.toContain("host-consent-decision");
       expect(logOutput).not.toContain("session-authorization-decision");
       expect(logOutput).not.toContain("session-authorization-state");
       expect(logOutput).not.toContain("session-control");
       expect(logOutput).not.toContain("permission-revoked");
       expect(logOutput).not.toContain("audit-event");
       expect(logOutput).not.toContain("host-1");
+      expect(logOutput).not.toContain("self-decision-grant-marker");
       expect(logOutput).not.toContain("authz_self");
       expect(logOutput).not.toContain("audit_self");
       expect(logOutput).not.toContain("private self-authority reason");
       expect(logOutput).not.toContain("raw-token");
+      expect(serializedRawEvents).not.toContain("host-consent-decision");
       expect(serializedRawEvents).not.toContain("session-authorization-decision");
       expect(serializedRawEvents).not.toContain("session-authorization-state");
       expect(serializedRawEvents).not.toContain("session-control");
       expect(serializedRawEvents).not.toContain("permission-revoked");
       expect(serializedRawEvents).not.toContain("audit-event");
       expect(serializedRawEvents).not.toContain("host-1");
+      expect(serializedRawEvents).not.toContain("self-decision-grant-marker");
       expect(serializedRawEvents).not.toContain("authz_self");
       expect(serializedRawEvents).not.toContain("audit_self");
       expect(serializedRawEvents).not.toContain("private self-authority reason");
@@ -4176,6 +4182,15 @@ async function startSelfAuthorityWorkflowServer(): Promise<{
     socket.once("message", () => {
       const expiresAt = new Date(Date.now() + 60_000).toISOString();
       const messages: ProtocolEnvelope[] = [
+        {
+          ...createMessageBase("session-demo"),
+          type: "host-consent-decision",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          approved: true,
+          grantedPermissions: ["input:keyboard"],
+          reason: "private self-authority reason self-decision-grant-marker raw-token"
+        },
         {
           ...createMessageBase("session-demo"),
           type: "session-authorization-decision",

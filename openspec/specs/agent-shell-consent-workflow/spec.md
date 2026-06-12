@@ -288,7 +288,12 @@ The agent shell SHALL emit local `sent` and `received` runtime events without ex
 - **THEN** reason redaction MUST apply only to the local runtime event view and MUST NOT change protocol validation, socket send behavior, relay forwarding, or internal workflow handling
 
 ### Requirement: Inbound workflow self-authority boundary
-The agent shell SHALL ignore decoded inbound authorization lifecycle and audit workflow messages that identify the local runtime peer as the authority actor before emitting local `received` protocol events or received workflow summary logs.
+The agent shell SHALL ignore decoded inbound legacy consent decisions, authorization lifecycle messages, and audit workflow messages that identify the local runtime peer as the authority actor before emitting local `received` protocol events or received workflow summary logs.
+
+#### Scenario: Self-origin legacy host consent decision is ignored
+- **WHEN** a host shell receives a decoded legacy `host-consent-decision` whose `hostPeerId` equals the local host peer id
+- **THEN** the shell MUST NOT emit a local `received` protocol event for that ignored message
+- **AND** the shell MUST NOT log a received workflow summary for that ignored message
 
 #### Scenario: Self-origin authorization decision is ignored
 - **WHEN** a host shell receives a decoded `session-authorization-decision` whose `hostPeerId` equals the local host peer id

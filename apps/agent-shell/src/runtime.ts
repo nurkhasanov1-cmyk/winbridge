@@ -415,6 +415,10 @@ function isSelfAuthorityWorkflowMessage(
     return envelope.hostPeerId === options.peerId;
   }
 
+  if (envelope.type === "host-consent-decision") {
+    return envelope.hostPeerId === options.peerId;
+  }
+
   return (
     (envelope.type === "session-authorization-state" ||
       envelope.type === "session-control" ||
