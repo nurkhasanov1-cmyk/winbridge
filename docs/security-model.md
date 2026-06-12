@@ -219,7 +219,7 @@ The development relay sends a `peer-disconnected` protocol message to the remain
 Disconnect notices:
 
 - Identify the disconnected peer id and role.
-- Use bounded reason codes such as `peer-closed`.
+- Use bounded reason codes such as `peer-closed` for ordinary close cleanup and `heartbeat-timeout` for relay heartbeat timeout cleanup.
 - Do not include raw WebSocket close reasons.
 - Do not grant permissions, approve sessions, start capture, send input, reconnect peers, suppress host visibility, or bypass consent workflows.
 
