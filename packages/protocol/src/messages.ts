@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { z } from "zod";
-import { AuditOutcomeSchema, redactAuditDetail } from "./audit.js";
+import { AuditDetailSchema, AuditOutcomeSchema, redactAuditDetail } from "./audit.js";
 import { SessionAuthorizationStatusSchema } from "./authorization.js";
 import { DeviceDisplayNameSchema, DeviceIdentitySchema } from "./identity.js";
 import {
@@ -342,7 +342,7 @@ export const AuditEventMessageSchema = BaseMessageSchema.extend({
   actorPeerId: PeerIdSchema,
   action: ProtocolAuditActionSchema,
   outcome: AuditOutcomeSchema,
-  detail: z.record(z.unknown()).default({}).transform(redactAuditDetail)
+  detail: AuditDetailSchema.default({}).transform(redactAuditDetail)
 });
 
 export const ProtocolEnvelopeSchema = z.union([

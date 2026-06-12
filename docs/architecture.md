@@ -56,6 +56,7 @@ Owns reusable development audit sinks:
 - Schema validation and redaction through protocol audit contracts.
 
 In-memory audit records are immutable after write so test code cannot mutate retained audit history.
+Audit detail metadata is restricted to JSON-compatible values before records or protocol `audit-event` messages are retained, emitted, encoded, or persisted; properties that JSON would silently omit are rejected.
 Audit output must not contain raw tokens, raw pairing codes, credentials, API keys, authorization headers, cookies, private keys, raw display names, private reason text, keystrokes, screenshots, screen contents, clipboard contents, file-transfer contents/data/bytes, or diagnostics content/dumps.
 Audit detail redaction preserves non-secret lifecycle identifiers such as `authorizationId`.
 

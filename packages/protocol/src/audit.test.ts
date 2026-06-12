@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAuditRecord, redactAuditDetail } from "./audit.js";
+import { createAuditRecord, redactAuditDetail, type AuditDetail } from "./audit.js";
 
 describe("audit records", () => {
   it("creates schema-valid structured audit records", () => {
@@ -13,6 +13,108 @@ describe("audit records", () => {
 
     expect(record.action).toBe("relay.peer.join.accepted");
     expect(record.detail).toEqual({ role: "viewer" });
+  });
+
+  it("accepts JSON-compatible audit detail values", () => {
+    const record = createAuditRecord({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.peer.join.accepted",
+      outcome: "accepted",
+      detail: {
+        role: "viewer",
+        attempts: 2,
+        paired: true,
+        optional: null,
+        nested: {
+          values: ["screen:view", 1, false, null]
+        }
+      }
+    });
+
+    expect(record.detail).toEqual({
+      role: "viewer",
+      attempts: 2,
+      paired: true,
+      optional: null,
+      nested: {
+        values: ["screen:view", 1, false, null]
+      }
+    });
+  });
+
+  it("rejects non-JSON audit detail values", () => {
+    const circularDetail: Record<string, unknown> = {};
+    circularDetail.self = circularDetail;
+    const sharedDetail = { shared: { safe: "kept" } };
+    sharedDetail.shared = sharedDetail.shared;
+    const symbolKeyDetail = { safe: "kept", [Symbol("hidden")]: "hidden" };
+    const nonEnumerableDetail: Record<string, unknown> = { safe: "kept" };
+    Object.defineProperty(nonEnumerableDetail, "hidden", {
+      value: "hidden",
+      enumerable: false
+    });
+    const accessorDetail: Record<string, unknown> = { safe: "kept" };
+    Object.defineProperty(accessorDetail, "hidden", {
+      get: () => "hidden",
+      enumerable: true
+    });
+    const nestedNonEnumerableDetail: Record<string, unknown> = { nested: { safe: "kept" } };
+    Object.defineProperty(nestedNonEnumerableDetail.nested as object, "hidden", {
+      value: "hidden",
+      enumerable: false
+    });
+    const sparseArrayDetail: Record<string, unknown> = { attempts: [] };
+    (sparseArrayDetail.attempts as unknown[])[1] = "second";
+    const arrayExtraPropertyDetail: Record<string, unknown> = { attempts: ["first"] };
+    Object.defineProperty(arrayExtraPropertyDetail.attempts as object, "hidden", {
+      value: "hidden",
+      enumerable: true
+    });
+    const invalidDetails: Array<Record<string, unknown>> = [
+      { handler: () => "handled" },
+      { marker: Symbol("marker") },
+      { count: BigInt(1) },
+      { omitted: undefined },
+      { count: NaN },
+      { count: Infinity },
+      { count: -Infinity },
+      { nested: { handler: () => "handled" } },
+      { attempts: [undefined] },
+      { token: () => "secret-token" },
+      symbolKeyDetail,
+      nonEnumerableDetail,
+      accessorDetail,
+      nestedNonEnumerableDetail,
+      sparseArrayDetail,
+      arrayExtraPropertyDetail,
+      circularDetail
+    ];
+
+    for (const detail of invalidDetails) {
+      expect(() =>
+        createAuditRecord({
+          actor: { type: "relay", id: "relay-dev" },
+          action: "relay.peer.join.accepted",
+          outcome: "accepted",
+          detail: detail as AuditDetail
+        })
+      ).toThrow("JSON-compatible");
+    }
+
+    expect(
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.peer.join.accepted",
+        outcome: "accepted",
+        detail: {
+          first: sharedDetail.shared,
+          second: sharedDetail.shared
+        }
+      }).detail
+    ).toEqual({
+      first: { safe: "kept" },
+      second: { safe: "kept" }
+    });
   });
 
   it("rejects records without required actor metadata", () => {

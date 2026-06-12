@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -103,55 +103,43 @@ describe("MemoryAuditSink", () => {
     }).toThrow(TypeError);
   });
 
-  it("freezes function-valued detail entries and their properties", () => {
+  it("rejects non-JSON detail values before storing them", () => {
     const sink = new MemoryAuditSink();
-    const handler = Object.assign(() => "handled", {
-      state: {
-        safe: "kept"
-      }
+    const symbolKeyDetail = { safe: "kept", [Symbol("hidden")]: "hidden" };
+    const nonEnumerableDetail: Record<string, unknown> = { safe: "kept" };
+    Object.defineProperty(nonEnumerableDetail, "hidden", {
+      value: "hidden",
+      enumerable: false
     });
+    const sparseArrayDetail: Record<string, unknown> = { attempts: [] };
+    (sparseArrayDetail.attempts as unknown[])[1] = "second";
+    const invalidDetails: Array<Record<string, unknown>> = [
+      { handler: () => "handled" },
+      { marker: Symbol("marker") },
+      { count: BigInt(1) },
+      { omitted: undefined },
+      { count: NaN },
+      { count: Infinity },
+      { count: -Infinity },
+      { nested: { handler: () => "handled" } },
+      { attempts: [undefined] },
+      { token: () => "secret-token" },
+      symbolKeyDetail,
+      nonEnumerableDetail,
+      sparseArrayDetail
+    ];
 
-    const record = sink.write({
-      actor: { type: "relay", id: "relay-dev" },
-      action: "relay.peer.join.accepted",
-      outcome: "accepted",
-      detail: {
-        handler
-      }
-    });
-    const frozenHandler = record.detail.handler as typeof handler;
-
-    expect(Object.isFrozen(frozenHandler)).toBe(true);
-    expect(Object.isFrozen(frozenHandler.state)).toBe(true);
-    expect(() => {
-      frozenHandler.state.safe = "tampered";
-    }).toThrow(TypeError);
-  });
-
-  it("freezes nested properties on already-frozen function-valued detail entries", () => {
-    const sink = new MemoryAuditSink();
-    const handler = Object.assign(() => "handled", {
-      state: {
-        safe: "kept"
-      }
-    });
-    Object.freeze(handler);
-
-    const record = sink.write({
-      actor: { type: "relay", id: "relay-dev" },
-      action: "relay.peer.join.accepted",
-      outcome: "accepted",
-      detail: {
-        handler
-      }
-    });
-    const frozenHandler = record.detail.handler as typeof handler;
-
-    expect(Object.isFrozen(frozenHandler)).toBe(true);
-    expect(Object.isFrozen(frozenHandler.state)).toBe(true);
-    expect(() => {
-      frozenHandler.state.safe = "tampered";
-    }).toThrow(TypeError);
+    for (const detail of invalidDetails) {
+      expect(() =>
+        sink.write({
+          actor: { type: "relay", id: "relay-dev" },
+          action: "relay.peer.join.accepted",
+          outcome: "accepted",
+          detail: detail as never
+        })
+      ).toThrow("JSON-compatible");
+    }
+    expect(sink.records()).toHaveLength(0);
   });
 
   it("protects retained audit history from records view mutation attempts", () => {
@@ -239,6 +227,52 @@ describe("FileAuditSink", () => {
 
       const lines = readFileSync(path, "utf8").trim().split(/\r?\n/);
       expect(lines.map((line) => JSON.parse(line).action)).toEqual(["first", "second"]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects non-JSON detail values before appending JSONL records", () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "audit.jsonl");
+    const emptyPath = join(root, "empty", "audit.jsonl");
+    const sink = new FileAuditSink(path);
+    const emptySink = new FileAuditSink(emptyPath);
+
+    try {
+      expect(() =>
+        emptySink.write({
+          actor: { type: "relay", id: "relay-dev" },
+          action: "invalid",
+          outcome: "failed",
+          detail: {
+            handler: () => "handled"
+          } as never
+        })
+      ).toThrow("JSON-compatible");
+      expect(existsSync(emptyPath)).toBe(false);
+
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "first",
+        outcome: "accepted",
+        detail: {
+          safe: "kept"
+        }
+      });
+      const before = readFileSync(path, "utf8");
+
+      expect(() =>
+        sink.write({
+          actor: { type: "relay", id: "relay-dev" },
+          action: "invalid",
+          outcome: "failed",
+          detail: {
+            count: BigInt(1)
+          } as never
+        })
+      ).toThrow("JSON-compatible");
+      expect(readFileSync(path, "utf8")).toBe(before);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

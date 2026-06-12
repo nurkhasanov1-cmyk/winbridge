@@ -20,6 +20,7 @@ import {
   decodeProtocolEnvelope,
   encodeProtocolEnvelope,
   JoinSessionMessageSchema,
+  type AuditDetail,
   type ProtocolEnvelope
 } from "@winbridge/protocol";
 import {
@@ -204,19 +205,22 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
             roomSize: rooms.size(registeredPeer.sessionId)
           });
           socket.send(ready);
+          const joinAuditDetail: AuditDetail = {
+            role: registeredPeer.role,
+            roomSize: rooms.size(registeredPeer.sessionId),
+            pairingTicketCreated: joinResult.ticketCreated,
+            pairingTicketConsumed: joinResult.ticketConsumed,
+            pairedDeviceRecorded: Boolean(joinResult.pairedDevice)
+          };
+          if (joinResult.ticketRemainingUses !== undefined) {
+            joinAuditDetail.pairingTicketRemainingUses = joinResult.ticketRemainingUses;
+          }
           writeRelayAudit(auditSink, {
             action: "relay.peer.join.accepted",
             outcome: "accepted",
             sessionId: registeredPeer.sessionId,
             peerId: registeredPeer.peerId,
-            detail: {
-              role: registeredPeer.role,
-              roomSize: rooms.size(registeredPeer.sessionId),
-              pairingTicketCreated: joinResult.ticketCreated,
-              pairingTicketConsumed: joinResult.ticketConsumed,
-              pairingTicketRemainingUses: joinResult.ticketRemainingUses,
-              pairedDeviceRecorded: Boolean(joinResult.pairedDevice)
-            }
+            detail: joinAuditDetail
           });
           return;
         }
@@ -580,8 +584,8 @@ function assertRegisteredPeerCanForward(envelope: ProtocolEnvelope, peer: RelayP
 function acceptedForwardAuditDetail(
   envelope: ProtocolEnvelope,
   recipient: RelayPeer
-): Record<string, unknown> {
-  const detail: Record<string, unknown> = {
+): AuditDetail {
+  const detail: AuditDetail = {
     messageType: envelope.type,
     messageId: envelope.messageId,
     recipientPeerId: recipient.peerId,

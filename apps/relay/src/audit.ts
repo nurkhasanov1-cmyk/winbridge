@@ -1,5 +1,5 @@
 import { ConsoleAuditSink, FileAuditSink, type AuditSink } from "@winbridge/audit-log";
-import type { AuditOutcome, AuditRecord } from "@winbridge/protocol";
+import type { AuditDetail, AuditOutcome, AuditRecord } from "@winbridge/protocol";
 
 const relayActor = { type: "relay", id: "development-relay" } as const;
 
@@ -25,7 +25,7 @@ export function writeRelayAudit(
     sessionId?: string;
     peerId?: string;
     reason?: string;
-    detail?: Record<string, unknown>;
+    detail?: AuditDetail;
   }
 ): AuditRecord {
   return sink.write({

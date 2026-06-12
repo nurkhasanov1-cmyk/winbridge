@@ -13,6 +13,7 @@ import {
   parseProtocolEnvelope,
   SessionIdSchema,
   SessionRoleSchema,
+  type AuditDetail,
   type AuditOutcome,
   type Permission,
   type ProtocolEnvelope,
@@ -25,7 +26,7 @@ export type HostDecision = "none" | "approve" | "deny";
 type DevelopmentAuditInput = {
   action: string;
   outcome: AuditOutcome;
-  detail: Record<string, unknown>;
+  detail: AuditDetail;
 };
 
 type DevelopmentAuditEvent = Extract<ProtocolEnvelope, { type: "audit-event" }>;

@@ -232,7 +232,7 @@ The agent shell can write local host workflow audit records to JSONL when `WINBR
 
 Configured relay or agent audit file paths must be non-blank. Omitted audit paths keep the documented development fallback behavior, but empty or whitespace-only configured paths fail before relay peer acceptance or agent runtime startup.
 
-File audit records use the same schema validation and redaction as memory and console sinks. Top-level audit reasons that contain obvious sensitive material are redacted before records are returned, emitted, or persisted. Write failures are surfaced to the caller instead of silently dropping records.
+File audit records use the same schema validation and redaction as memory and console sinks. Audit detail metadata must be JSON-compatible; functions, symbols, bigint, `undefined`, non-finite numbers, cyclic values, own symbol-keyed properties, own non-enumerable properties, accessor properties, sparse arrays, and non-index array properties are rejected before records are returned, emitted, or persisted. Top-level audit reasons that contain obvious sensitive material are redacted before records are returned, emitted, or persisted. Write failures are surfaced to the caller instead of silently dropping records.
 
 In-memory audit records are immutable after write so development test code cannot mutate retained audit history through returned records.
 Audit action, reason, and target type metadata must be non-blank before records or protocol audit events are emitted, forwarded, or persisted.

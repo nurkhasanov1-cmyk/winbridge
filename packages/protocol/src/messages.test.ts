@@ -4,6 +4,7 @@ import {
   encodeProtocolEnvelope,
   parseProtocolEnvelope
 } from "./messages.js";
+import type { AuditDetail } from "./audit.js";
 import { assertConsentBoundGrant } from "./session.js";
 
 describe("protocol envelopes", () => {
@@ -1014,6 +1015,120 @@ describe("protocol envelopes", () => {
         reason: "Invalid"
       })
     ).toThrow();
+  });
+
+  it("accepts JSON-compatible audit-event detail values", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: "agent-shell.test",
+      outcome: "accepted",
+      detail: {
+        status: "active",
+        attempts: 2,
+        visible: true,
+        optional: null,
+        nested: {
+          values: ["screen:view", 1, false, null]
+        }
+      }
+    });
+
+    expect(parsed).toMatchObject({
+      type: "audit-event",
+      detail: {
+        status: "active",
+        attempts: 2,
+        visible: true,
+        optional: null,
+        nested: {
+          values: ["screen:view", 1, false, null]
+        }
+      }
+    });
+  });
+
+  it("rejects non-JSON audit-event detail values when parsing protocol messages", () => {
+    const circularDetail: Record<string, unknown> = {};
+    circularDetail.self = circularDetail;
+    const symbolKeyDetail = { safe: "kept", [Symbol("hidden")]: "hidden" };
+    const nonEnumerableDetail: Record<string, unknown> = { safe: "kept" };
+    Object.defineProperty(nonEnumerableDetail, "hidden", {
+      value: "hidden",
+      enumerable: false
+    });
+    const accessorDetail: Record<string, unknown> = { safe: "kept" };
+    Object.defineProperty(accessorDetail, "hidden", {
+      get: () => "hidden",
+      enumerable: true
+    });
+    const sparseArrayDetail: Record<string, unknown> = { attempts: [] };
+    (sparseArrayDetail.attempts as unknown[])[1] = "second";
+    const arrayExtraPropertyDetail: Record<string, unknown> = { attempts: ["first"] };
+    Object.defineProperty(arrayExtraPropertyDetail.attempts as object, "hidden", {
+      value: "hidden",
+      enumerable: true
+    });
+    const invalidDetails: Array<Record<string, unknown>> = [
+      { handler: () => "handled" },
+      { marker: Symbol("marker") },
+      { count: BigInt(1) },
+      { omitted: undefined },
+      { count: NaN },
+      { count: Infinity },
+      { count: -Infinity },
+      { nested: { handler: () => "handled" } },
+      { attempts: [undefined] },
+      { token: () => "secret-token" },
+      symbolKeyDetail,
+      nonEnumerableDetail,
+      accessorDetail,
+      sparseArrayDetail,
+      arrayExtraPropertyDetail,
+      circularDetail
+    ];
+
+    for (const detail of invalidDetails) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "audit-event",
+          eventId: "audit-demo",
+          actorPeerId: "host-1",
+          action: "agent-shell.test",
+          outcome: "accepted",
+          detail
+        })
+      ).toThrow("JSON-compatible");
+    }
+  });
+
+  it("rejects non-JSON audit-event detail values when encoding protocol messages", () => {
+    const invalidDetails: Array<Record<string, unknown>> = [
+      { handler: () => "handled" },
+      { count: BigInt(1) },
+      { omitted: undefined },
+      { count: NaN },
+      { count: Infinity },
+      { count: -Infinity },
+      { attempts: [undefined] }
+    ];
+
+    for (const detail of invalidDetails) {
+      expect(() =>
+        encodeProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "audit-event",
+          eventId: "audit-demo",
+          actorPeerId: "host-1",
+          action: "agent-shell.test",
+          outcome: "accepted",
+          detail: detail as AuditDetail
+        })
+      ).toThrow("JSON-compatible");
+    }
   });
 
   it("redacts sensitive audit-event detail fields when parsing protocol messages", () => {
