@@ -695,6 +695,100 @@ describe("session authorization state machine", () => {
     ).toThrow("terminated");
   });
 
+  it("terminates paused visible sessions fail closed", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view", "input:pointer"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const paused = pauseSessionAuthorization(active, {
+      reason: "Host paused",
+      now: baseTime
+    });
+    const terminated = terminateSessionAuthorization(paused, {
+      reason: "Host disconnected",
+      now: baseTime
+    });
+
+    expect(terminated).toMatchObject({
+      status: "terminated",
+      permissions: [],
+      terminatedAt: baseTime.toISOString()
+    });
+    expect(() =>
+      assertSessionActionAuthorized({
+        authorization: terminated,
+        permission: "screen:view",
+        now: baseTime
+      })
+    ).toThrow("terminated");
+  });
+
+  it("rejects unsafe session termination transitions", () => {
+    const approved = approveSessionAuthorization(pending(), {
+      grantedPermissions: ["screen:view"],
+      now: baseTime
+    });
+    const active = activateSessionAuthorization(approved, {
+      visibleToHost: true,
+      now: baseTime
+    });
+    const paused = pauseSessionAuthorization(active, {
+      reason: "Host paused",
+      now: baseTime
+    });
+    const denied = denySessionAuthorization(pending(), {
+      reason: "Host denied",
+      now: baseTime
+    });
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: baseTime
+    });
+    const terminated = terminateSessionAuthorization(active, {
+      reason: "Host disconnected",
+      now: baseTime
+    });
+    const expiredTime = new Date("2026-06-11T00:31:00.000Z");
+    const expired = expireSessionAuthorization(active, expiredTime);
+
+    for (const authorization of [pending(), approved, denied, revoked, terminated, expired]) {
+      expect(() =>
+        terminateSessionAuthorization(authorization, {
+          reason: "Host disconnected",
+          now: baseTime
+        })
+      ).toThrow(authorization.status);
+    }
+
+    expect(() =>
+      terminateSessionAuthorization(
+        {
+          ...active,
+          visibleToHost: false
+        },
+        {
+          reason: "Host disconnected",
+          now: baseTime
+        }
+      )
+    ).toThrow("visible");
+    expect(() =>
+      terminateSessionAuthorization(active, {
+        reason: "Host disconnected",
+        now: expiredTime
+      })
+    ).toThrow("expired");
+    expect(() =>
+      terminateSessionAuthorization(paused, {
+        reason: "Host disconnected",
+        now: expiredTime
+      })
+    ).toThrow("expired");
+  });
+
   it("expires active authorizations fail closed", () => {
     const soon = createPendingSessionAuthorization({
       sessionId: "session-demo",
@@ -724,6 +818,45 @@ describe("session authorization state machine", () => {
         now: afterExpiry
       })
     ).toThrow("expired");
+  });
+
+  it("preserves terminal authorization status after later expiration checks", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const denied = denySessionAuthorization(pending(), {
+      reason: "Host denied",
+      now: baseTime
+    });
+    const revoked = revokeSessionPermission(active, {
+      permission: "screen:view",
+      now: baseTime
+    });
+    const terminated = terminateSessionAuthorization(active, {
+      reason: "Host disconnected",
+      now: baseTime
+    });
+    const firstExpiredAt = new Date("2026-06-11T00:31:00.000Z");
+    const expired = expireSessionAuthorization(active, firstExpiredAt);
+    const later = new Date("2026-06-11T00:45:00.000Z");
+
+    for (const authorization of [denied, revoked, terminated, expired]) {
+      const checked = expireSessionAuthorization(authorization, later);
+
+      expect(checked).toEqual(authorization);
+      expect(checked.permissions).toEqual([]);
+      expect(() =>
+        assertSessionActionAuthorized({
+          authorization: checked,
+          permission: "screen:view",
+          now: later
+        })
+      ).toThrow(authorization.status);
+    }
   });
 
   it("denies actions while paused and resumes granted permissions", () => {

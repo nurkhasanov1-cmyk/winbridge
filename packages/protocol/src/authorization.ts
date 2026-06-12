@@ -16,6 +16,7 @@ export type SessionAuthorizationStatus = z.infer<typeof SessionAuthorizationStat
 
 const grantBearingStatuses = new Set<SessionAuthorizationStatus>(["pending", "approved", "active", "paused"]);
 const terminalStatuses = new Set<SessionAuthorizationStatus>(["denied", "revoked", "terminated", "expired"]);
+const terminableStatuses = new Set<SessionAuthorizationStatus>(["active", "paused"]);
 const DEFAULT_AUTHORIZATION_TTL_MS = 30 * 60_000;
 const MAX_AUTHORIZATION_TTL_MS = 2_147_483_647;
 const AuthorizationReasonSchema = z
@@ -337,6 +338,16 @@ export function terminateSessionAuthorization(
   const parsed = SessionAuthorizationSchema.parse(authorization);
   const now = input.now ?? new Date();
 
+  if (!terminableStatuses.has(parsed.status)) {
+    throw new Error(`Cannot terminate session authorization from ${parsed.status} state`);
+  }
+
+  if (!parsed.visibleToHost) {
+    throw new Error("Cannot terminate session authorization without visible host session");
+  }
+
+  assertNotExpired(parsed, now);
+
   return SessionAuthorizationSchema.parse({
     ...parsed,
     status: "terminated",
@@ -352,6 +363,10 @@ export function expireSessionAuthorization(
   now = new Date()
 ): SessionAuthorization {
   const parsed = SessionAuthorizationSchema.parse(authorization);
+
+  if (terminalStatuses.has(parsed.status)) {
+    return parsed;
+  }
 
   if (!isSessionAuthorizationExpired(parsed, now)) {
     return parsed;
