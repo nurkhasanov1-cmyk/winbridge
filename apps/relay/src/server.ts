@@ -239,7 +239,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
           outcome: "accepted",
           sessionId: registeredPeer.sessionId,
           peerId: registeredPeer.peerId,
-          detail: acceptedForwardAuditDetail(envelope)
+          detail: acceptedForwardAuditDetail(envelope, recipient)
         });
       } catch (error) {
         const reason = safeRelayRejectionReason(error);
@@ -577,8 +577,15 @@ function assertRegisteredPeerCanForward(envelope: ProtocolEnvelope, peer: RelayP
   }
 }
 
-function acceptedForwardAuditDetail(envelope: ProtocolEnvelope): Record<string, unknown> {
-  const detail: Record<string, unknown> = { messageType: envelope.type };
+function acceptedForwardAuditDetail(
+  envelope: ProtocolEnvelope,
+  recipient: RelayPeer
+): Record<string, unknown> {
+  const detail: Record<string, unknown> = {
+    messageType: envelope.type,
+    recipientPeerId: recipient.peerId,
+    recipientRole: recipient.role
+  };
 
   if (envelope.type === "signal") {
     const authorizationId = envelope.payload.authorizationId;

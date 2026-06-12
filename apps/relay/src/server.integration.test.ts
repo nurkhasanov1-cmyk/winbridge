@@ -139,12 +139,16 @@ describe("relay runtime integration", () => {
       sessionId: "session-demo",
       detail: {
         messageType: "signal",
-        authorizationId
+        authorizationId,
+        recipientPeerId: "viewer-1",
+        recipientRole: "viewer"
       }
     });
     expect(forwarded.detail).toEqual({
       messageType: "signal",
-      authorizationId
+      authorizationId,
+      recipientPeerId: "viewer-1",
+      recipientRole: "viewer"
     });
     expect(JSON.stringify(forwarded)).not.toContain(privateMarker);
     expect(JSON.stringify(forwarded)).not.toContain("raw-forwarded-signal-sdp");
@@ -1015,7 +1019,7 @@ describe("relay runtime integration", () => {
         ...createMessageBase("session-demo"),
         type: "host-consent-required",
         viewerPeerId: "viewer-1",
-        viewerDisplayName: "Viewer",
+        viewerDisplayName: "Viewer Private Display",
         requestedPermissions: ["screen:view"]
       })
     );
@@ -1036,12 +1040,24 @@ describe("relay runtime integration", () => {
     );
     expect(forwarded).toMatchObject({
       action: "relay.message.forwarded",
+      actor: {
+        id: "development-relay:viewer-1"
+      },
       outcome: "accepted",
       sessionId: "session-demo",
       detail: {
-        messageType: "host-consent-required"
+        messageType: "host-consent-required",
+        recipientPeerId: "host-1",
+        recipientRole: "host"
       }
     });
+    expect(forwarded.detail).toEqual({
+      messageType: "host-consent-required",
+      recipientPeerId: "host-1",
+      recipientRole: "host"
+    });
+    expect(JSON.stringify(forwarded)).not.toContain("Viewer Private Display");
+    expect(JSON.stringify(forwarded)).not.toContain("screen:view");
     expect(auditSink.records().some((record) => record.reason === "Message role does not match registered peer")).toBe(
       false
     );
