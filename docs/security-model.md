@@ -234,6 +234,7 @@ Configured relay or agent audit file paths must be non-blank. Omitted audit path
 
 File audit records use the same schema validation and redaction as memory and console sinks. Top-level audit reasons that contain obvious sensitive material are redacted before records are returned, emitted, or persisted. Write failures are surfaced to the caller instead of silently dropping records.
 
+In-memory audit records are immutable after write so development test code cannot mutate retained audit history through returned records.
 Audit action, reason, and target type metadata must be non-blank before records or protocol audit events are emitted, forwarded, or persisted.
 
 Development audit files must not contain raw tokens, raw pairing codes, credentials, API keys, authorization headers, auth headers, cookies, private keys, raw display names, private reason text, keystrokes, screenshots, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or full secrets.

@@ -14,7 +14,7 @@ export class MemoryAuditSink implements AuditSink {
   private readonly entries: AuditRecord[] = [];
 
   write(input: AuditRecordInput): AuditRecord {
-    const record = createAuditRecord(input);
+    const record = deepFreeze(createAuditRecord(input));
     this.entries.push(record);
     return record;
   }
@@ -26,6 +26,29 @@ export class MemoryAuditSink implements AuditSink {
   clear(): void {
     this.entries.length = 0;
   }
+}
+
+function deepFreeze<T>(value: T, visited = new WeakSet<object>()): T {
+  const valueType = typeof value;
+  if (!value || (valueType !== "object" && valueType !== "function")) {
+    return value;
+  }
+
+  const objectValue = value as object;
+  if (visited.has(objectValue)) {
+    return value;
+  }
+  visited.add(objectValue);
+
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested, visited);
+  }
+
+  if (!Object.isFrozen(objectValue)) {
+    Object.freeze(objectValue);
+  }
+
+  return value;
 }
 
 export class ConsoleAuditSink implements AuditSink {

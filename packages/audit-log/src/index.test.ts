@@ -73,6 +73,124 @@ describe("MemoryAuditSink", () => {
       diagnosticDump: "[REDACTED]"
     });
   });
+
+  it("returns immutable audit records with immutable nested detail", () => {
+    const sink = new MemoryAuditSink();
+
+    const record = sink.write({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.peer.join.accepted",
+      outcome: "accepted",
+      detail: {
+        nested: {
+          safe: "kept"
+        },
+        attempts: [{ remaining: 1 }]
+      }
+    });
+
+    expect(Object.isFrozen(record)).toBe(true);
+    expect(Object.isFrozen(record.actor)).toBe(true);
+    expect(Object.isFrozen(record.detail)).toBe(true);
+    expect(Object.isFrozen(record.detail.nested as object)).toBe(true);
+    expect(Object.isFrozen(record.detail.attempts as object)).toBe(true);
+    expect(Object.isFrozen((record.detail.attempts as Array<Record<string, unknown>>)[0])).toBe(true);
+    expect(() => {
+      (record as unknown as { action: string }).action = "tampered";
+    }).toThrow(TypeError);
+    expect(() => {
+      ((record.detail.nested as Record<string, unknown>).safe) = "tampered";
+    }).toThrow(TypeError);
+  });
+
+  it("freezes function-valued detail entries and their properties", () => {
+    const sink = new MemoryAuditSink();
+    const handler = Object.assign(() => "handled", {
+      state: {
+        safe: "kept"
+      }
+    });
+
+    const record = sink.write({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.peer.join.accepted",
+      outcome: "accepted",
+      detail: {
+        handler
+      }
+    });
+    const frozenHandler = record.detail.handler as typeof handler;
+
+    expect(Object.isFrozen(frozenHandler)).toBe(true);
+    expect(Object.isFrozen(frozenHandler.state)).toBe(true);
+    expect(() => {
+      frozenHandler.state.safe = "tampered";
+    }).toThrow(TypeError);
+  });
+
+  it("freezes nested properties on already-frozen function-valued detail entries", () => {
+    const sink = new MemoryAuditSink();
+    const handler = Object.assign(() => "handled", {
+      state: {
+        safe: "kept"
+      }
+    });
+    Object.freeze(handler);
+
+    const record = sink.write({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.peer.join.accepted",
+      outcome: "accepted",
+      detail: {
+        handler
+      }
+    });
+    const frozenHandler = record.detail.handler as typeof handler;
+
+    expect(Object.isFrozen(frozenHandler)).toBe(true);
+    expect(Object.isFrozen(frozenHandler.state)).toBe(true);
+    expect(() => {
+      frozenHandler.state.safe = "tampered";
+    }).toThrow(TypeError);
+  });
+
+  it("protects retained audit history from records view mutation attempts", () => {
+    const sink = new MemoryAuditSink();
+    sink.write({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "first",
+      outcome: "accepted",
+      detail: {
+        nested: {
+          safe: "kept"
+        }
+      }
+    });
+
+    const records = sink.records();
+    records.pop();
+    const [record] = sink.records();
+
+    expect(sink.records()).toHaveLength(1);
+    try {
+      if (record) {
+        (record as unknown as { action: string }).action = "tampered";
+        ((record.detail.nested as Record<string, unknown>).safe) = "tampered";
+      }
+    } catch {
+      // Frozen records throw in strict runtimes; silent no-op is also acceptable.
+    }
+
+    expect(sink.records()).toHaveLength(1);
+    expect(sink.records()[0]).toMatchObject({
+      action: "first",
+      detail: {
+        nested: {
+          safe: "kept"
+        }
+      }
+    });
+  });
 });
 
 describe("ConsoleAuditSink", () => {
