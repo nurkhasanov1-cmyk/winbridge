@@ -993,6 +993,153 @@ describe("agent shell consent workflow", () => {
     expect(JSON.stringify(hostAuditSink.records())).not.toContain("123-456");
   });
 
+  it("persists host workflow audit records without raw display names or lifecycle markers", async () => {
+    const root = mkdtempSync(join(tmpdir(), "winbridge-agent-audit-"));
+    const auditPath = join(root, "agent-audit.jsonl");
+    const hostDisplayName = "Private Host Display signal-payload-marker";
+    const viewerDisplayName = "Private Viewer Display protocol-payload-marker";
+    const pauseReason = "private-pause-reason signal-payload-marker";
+    const resumeReason = "private-resume-reason protocol-payload-marker";
+    const terminateReason = "private-terminate-reason lifecycle-marker";
+
+    try {
+      const { relay, viewerEvents } = await startRelayAndHost({
+        hostAuditSink: new FileAuditSink(auditPath),
+        hostDecision: "approve",
+        hostDisplayName,
+        hostPauseAfterMs: 10,
+        hostPauseReason: pauseReason,
+        hostResumeAfterMs: 10,
+        hostResumeReason: resumeReason,
+        hostTerminateAfterMs: 45,
+        hostTerminateReason: terminateReason,
+        visibleToHost: true
+      });
+      await startViewer(
+        relay.url(),
+        ["screen:view"],
+        viewerEvents,
+        silentLogger,
+        undefined,
+        viewerDisplayName
+      );
+
+      const terminatedAudit = await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "audit-event" &&
+          message.action === "agent-shell.authorization.terminated"
+      );
+      const persisted = readFileSync(auditPath, "utf8")
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => JSON.parse(line));
+
+      expect(persisted.map((record) => record.action)).toEqual([
+        "agent-shell.authorization.approved",
+        "agent-shell.authorization.active",
+        "agent-shell.authorization.paused",
+        "agent-shell.authorization.resumed",
+        "agent-shell.authorization.terminated"
+      ]);
+      expect(persisted).toEqual([
+        expect.objectContaining({
+          actor: {
+            type: "host",
+            id: "host-1",
+            deviceId: "dev_host_1"
+          },
+          sessionId: "session-demo",
+          action: "agent-shell.authorization.approved",
+          outcome: "accepted",
+          detail: {
+            requestedPermissionCount: 1,
+            grantedPermissionCount: 1
+          }
+        }),
+        expect.objectContaining({
+          actor: {
+            type: "host",
+            id: "host-1",
+            deviceId: "dev_host_1"
+          },
+          sessionId: "session-demo",
+          action: "agent-shell.authorization.active",
+          outcome: "accepted",
+          detail: {
+            grantedPermissionCount: 1,
+            visibleToHost: true
+          }
+        }),
+        expect.objectContaining({
+          actor: {
+            type: "host",
+            id: "host-1",
+            deviceId: "dev_host_1"
+          },
+          sessionId: "session-demo",
+          action: "agent-shell.authorization.paused",
+          outcome: "accepted",
+          detail: {
+            grantedPermissionCount: 1,
+            visibleToHost: true,
+            paused: true,
+            reasonConfigured: true
+          }
+        }),
+        expect.objectContaining({
+          actor: {
+            type: "host",
+            id: "host-1",
+            deviceId: "dev_host_1"
+          },
+          sessionId: "session-demo",
+          action: "agent-shell.authorization.resumed",
+          outcome: "accepted",
+          detail: {
+            grantedPermissionCount: 1,
+            visibleToHost: true,
+            resumed: true,
+            reasonConfigured: true
+          }
+        }),
+        expect.objectContaining({
+          eventId: terminatedAudit.type === "audit-event" ? terminatedAudit.eventId : "",
+          actor: {
+            type: "host",
+            id: "host-1",
+            deviceId: "dev_host_1"
+          },
+          sessionId: "session-demo",
+          action: "agent-shell.authorization.terminated",
+          outcome: "accepted",
+          detail: {
+            previouslyGrantedPermissionCount: 1,
+            visibleToHost: true,
+            terminated: true
+          }
+        })
+      ]);
+
+      const persistedJson = JSON.stringify(persisted);
+      for (const unsafeMarker of [
+        "Private Host Display",
+        "Private Viewer Display",
+        "private-pause-reason",
+        "private-resume-reason",
+        "private-terminate-reason",
+        "lifecycle-marker",
+        "signal-payload-marker",
+        "protocol-payload-marker",
+        "123-456"
+      ]) {
+        expect(persistedJson).not.toContain(unsafeMarker);
+      }
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it("does not send pause or resume messages when visible active state is withheld", async () => {
     const { relay, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
@@ -1718,6 +1865,7 @@ async function startRelayAndHost(options: {
   decisionReason?: string;
   hostAuditSink?: AuditSink;
   hostDecision?: "none" | "approve" | "deny";
+  hostDisplayName?: string;
   hostLogger?: TestLogger;
   hostPauseAfterMs?: number;
   hostPauseReason?: string;
@@ -1747,7 +1895,7 @@ async function startRelayAndHost(options: {
     sessionId: "session-demo",
     pairingCode: "123-456",
     peerId: "host-1",
-    displayName: "Host",
+    displayName: options.hostDisplayName ?? "Host",
     deviceId: "dev_host_1",
     auditSink: options.hostAuditSink,
     hostDecision: options.hostDecision ?? "none",
@@ -1777,7 +1925,8 @@ async function startViewer(
   requestedPermissions: Permission[],
   viewerEvents: AgentShellEvent[] = [],
   logger: TestLogger = silentLogger,
-  auditSink?: AuditSink
+  auditSink?: AuditSink,
+  displayName = "Viewer"
 ): Promise<AgentShellRuntime> {
   const viewer = createAgentShellRuntime({
     role: "viewer",
@@ -1785,7 +1934,7 @@ async function startViewer(
     sessionId: "session-demo",
     pairingCode: "123-456",
     peerId: "viewer-1",
-    displayName: "Viewer",
+    displayName,
     deviceId: "dev_viewer_1",
     requestedPermissions,
     auditSink,

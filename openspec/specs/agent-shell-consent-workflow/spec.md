@@ -391,7 +391,7 @@ The host shell SHALL persist local development audit records for host-generated 
 - **THEN** it writes matching schema-valid audit records with the same event ids, actions, outcomes, and secret-safe details
 
 #### Scenario: Agent shell audit file details are secret-safe
-- **WHEN** host workflow audit records are persisted
+- **WHEN** host workflow audit records are persisted with private host display-name, viewer display-name, lifecycle-reason, pairing-code, signal-payload, or protocol-payload marker values present elsewhere in the workflow
 - **THEN** persisted details MUST NOT contain raw tokens, raw pairing codes, credentials, display names, signal payloads, raw protocol payloads, keystrokes, screenshots, screen contents, or raw private reason text
 
 #### Scenario: Received protocol payloads are not persisted as workflow audit
