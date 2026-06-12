@@ -125,6 +125,8 @@ Agent-shell `hello` is presence metadata only. Its capability hints must be boun
 
 When the shell receives `peer-disconnected`, it records remote peer disconnected state for the current development session. Host-side delayed workflow simulations and direct managed runtime sends for that peer fail closed after this state and do not send later revoke, pause, resume, termination, expiration, authorization-state, session-control, permission-revoked, workflow audit-event, or direct public runtime messages.
 
+Inbound `peer-disconnected` messages that identify the local runtime peer are ignored before local `received` protocol events or remote peer disconnected state handling; ignored self-disconnect input is logged only as redacted summary metadata.
+
 Peer disconnect state is not authorization. It must not approve a session, activate visibility, grant permissions, start capture, send input, reconnect a peer, suppress host visibility, or bypass consent workflows.
 
 ## Abuse Prevention Rules

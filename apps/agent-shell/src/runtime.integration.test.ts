@@ -1706,6 +1706,67 @@ describe("agent shell consent workflow", () => {
     expect(logOutput).not.toContain("payload");
   });
 
+  it("ignores peer-disconnected notices that identify the local peer", async () => {
+    const selfDisconnectServer = await startSelfDisconnectNoticeServer();
+    const hostEvents: AgentShellEvent[] = [];
+    const hostLogs: string[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: selfDisconnectServer.url,
+        logger: captureLogger(hostLogs),
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+
+      const rawEvent = await waitForRawEvent(hostEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(rawEvent.byteLength).toBeGreaterThan(0);
+      expect(hostEvents.some((event) => event.direction === "received")).toBe(false);
+
+      if (!host) {
+        throw new Error("Host runtime was not started");
+      }
+
+      expect(() =>
+        host.send({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload: {
+            kind: "offer",
+            sdp: "post-self-disconnect-offer"
+          }
+        })
+      ).not.toThrow();
+      expect(
+        hostEvents.some((event) => event.direction === "sent" && event.message.type === "signal")
+      ).toBe(true);
+
+      const serializedRawEvents = JSON.stringify(hostEvents.filter((event) => event.direction === "raw"));
+      const logOutput = hostLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("peer-disconnected");
+      expect(logOutput).not.toContain("host-1");
+      expect(logOutput).not.toContain("session-demo");
+      expect(serializedRawEvents).not.toContain("peer-disconnected");
+      expect(serializedRawEvents).not.toContain("host-1");
+      expect(serializedRawEvents).not.toContain("session-demo");
+      expect(JSON.stringify(hostEvents)).not.toContain("post-self-disconnect-offer");
+    } finally {
+      await host?.stop();
+      await selfDisconnectServer.stop();
+    }
+  });
+
   it("suppresses delayed host workflow messages after the viewer disconnects", async () => {
     const hostLogs: string[] = [];
     const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
@@ -2332,6 +2393,45 @@ async function startForeignRelayReadyServer(): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Foreign relay-ready test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startSelfDisconnectNoticeServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "peer-disconnected",
+        peerId: "host-1",
+        role: "host",
+        reasonCode: "peer-closed"
+      }));
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Self-disconnect test server did not expose a TCP port");
   }
 
   return {

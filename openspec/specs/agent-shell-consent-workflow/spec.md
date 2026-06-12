@@ -461,6 +461,19 @@ The host shell SHALL persist local development audit records for host-generated 
 - **WHEN** the configured host workflow audit sink fails to write a record
 - **THEN** the host shell surfaces the failure instead of silently dropping the audit record
 
+### Requirement: Inbound self-disconnect boundary
+The agent shell SHALL ignore decoded inbound `peer-disconnected` messages whose `peerId` equals the local runtime peer before emitting local `received` protocol events or recording remote peer disconnected state.
+
+#### Scenario: Self-disconnect notice is ignored
+- **WHEN** a host shell receives a decoded `peer-disconnected` message whose `peerId` equals the local host peer id
+- **THEN** the shell MUST NOT record remote peer disconnected state because of that message
+- **AND** the shell MUST NOT emit a local `received` protocol event for that ignored message
+
+#### Scenario: Ignored self-disconnect input remains secret-safe
+- **WHEN** the shell ignores a decoded `peer-disconnected` message that identifies the local peer
+- **THEN** local events and logs expose only redacted summary metadata such as byte length
+- **AND** they MUST NOT expose raw protocol payloads, session ids, peer ids, tokens, pairing codes, private reasons, signal payloads, keystrokes, screenshots, screen contents, or input contents
+
 ### Requirement: Peer disconnect state handling
 The agent shell SHALL treat a received `peer-disconnected` message as remote peer disconnected state for the current development session. After recording this state, the managed runtime MUST fail closed for delayed workflow sends and direct public runtime sends to that disconnected peer.
 
