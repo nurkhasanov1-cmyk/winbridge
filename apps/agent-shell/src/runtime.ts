@@ -13,6 +13,7 @@ import {
   parseProtocolEnvelope,
   SessionIdSchema,
   SessionRoleSchema,
+  stringifyJson,
   type AuditDetail,
   type AuditOutcome,
   type Permission,
@@ -1985,7 +1986,7 @@ function redactSignalEventMessage(
     ...message,
     payload: {
       redacted: REDACTED_EVENT_VALUE,
-      byteLength: Buffer.byteLength(JSON.stringify(message.payload))
+      byteLength: Buffer.byteLength(stringifyJson(message.payload), "utf8")
     }
   };
 }

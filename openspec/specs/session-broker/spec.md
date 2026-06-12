@@ -106,6 +106,17 @@ The relay and agents SHALL accept only JSON-compatible object values in `signal.
 - **WHEN** a `signal` payload is JSON-compatible but omits a valid top-level `authorizationId`, is empty, oversized, or contains sensitive remote-assistance content keys
 - **THEN** the relay and agents continue to reject the signal before forwarding or treating it as trusted remote-assistance data
 
+### Requirement: Canonical signal payload size measurement
+The relay and agents SHALL enforce the `signal.payload` size bound using the shared canonical JSON byte length, and inherited `toJSON` hooks or prototype pollution MUST NOT reduce or alter the measured payload size.
+
+#### Scenario: Oversized signal payload measurement ignores inherited toJSON hooks
+- **WHEN** a peer submits a `signal` payload whose canonical JSON byte length exceeds the protocol payload size bound while an inherited `toJSON` hook is present
+- **THEN** the protocol schema rejects the signal as oversized before forwarding, encoding, sending, receiving, or treating it as trusted remote-assistance signaling metadata
+
+#### Scenario: Small signal payload measurement remains stable
+- **WHEN** a peer submits a schema-valid small `signal` payload whose canonical JSON byte length is within the protocol payload size bound
+- **THEN** the protocol schema accepts the payload if all other signal safety checks pass
+
 ### Requirement: Development relay token
 The relay SHALL support an optional shared token for local/private development and SHALL document that production deployments require stronger identity and authorization. When a shared token is configured, it MUST be non-blank, 1024 UTF-8 bytes or less, contain no ASCII control characters, and peers MUST present exactly one `token` query parameter whose value exactly matches the configured shared token before joining a session room. When a shared token is not configured, peers MUST NOT present any `token` query parameter and the relay MUST reject token-bearing connections before joining a session room.
 

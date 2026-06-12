@@ -353,6 +353,24 @@ describe("protocol envelopes", () => {
     ).toThrow("Signal payload must be 16384 bytes or less");
   });
 
+  it("measures oversized signal payloads without inherited toJSON hooks", () => {
+    expect(() =>
+      withPrototypeToJsonHooks(() => {
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload: {
+            authorizationId: "authz-demo",
+            kind: "offer",
+            sdp: "x".repeat(16 * 1024)
+          }
+        });
+      })
+    ).toThrow("Signal payload must be 16384 bytes or less");
+  });
+
   it("rejects signal payloads with nested sensitive keys", () => {
     expect(() =>
       parseProtocolEnvelope({

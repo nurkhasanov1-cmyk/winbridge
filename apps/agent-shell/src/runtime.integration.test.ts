@@ -7,6 +7,7 @@ import { FileAuditSink, MemoryAuditSink, type AuditSink } from "@winbridge/audit
 import {
   createMessageBase,
   encodeProtocolEnvelope,
+  stringifyJson,
   type Permission,
   type ProtocolEnvelope
 } from "@winbridge/protocol";
@@ -496,6 +497,58 @@ describe("agent shell consent workflow", () => {
     expect(JSON.stringify(viewerEvents)).not.toContain("raw-screen-content");
     expect(hostLogs.join("\n")).not.toContain("raw-screen-content");
     expect(viewerLogs.join("\n")).not.toContain("raw-screen-content");
+  });
+
+  it("measures signal event byte lengths without inherited toJSON hooks", async () => {
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+    const authorizationId = await waitForSentActiveAuthorizationId(hostEvents);
+    const payload = {
+      authorizationId,
+      kind: "offer",
+      nested: { safe: "kept" }
+    };
+    const expectedByteLength = Buffer.byteLength(stringifyJson(payload), "utf8");
+
+    const result = await withInheritedSignalPayloadToJsonHook(authorizationId, async () => {
+      host.send({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "host-1",
+        toPeerId: "viewer-1",
+        payload
+      });
+
+      const sentSignal = await waitForSentMessage(
+        hostEvents,
+        (message) => message.type === "signal" && message.fromPeerId === "host-1"
+      );
+      const receivedSignal = await waitForMessage(
+        viewerEvents,
+        (message) => message.type === "signal" && message.fromPeerId === "host-1"
+      );
+
+      return { sentSignal, receivedSignal };
+    });
+
+    expect(result.sentSignal).toMatchObject({
+      type: "signal",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: expectedByteLength
+      }
+    });
+    expect(result.receivedSignal).toMatchObject({
+      type: "signal",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: expectedByteLength
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("raw-screen-content");
   });
 
   it("blocks public signal sends with spoofed sender, explicit self target, or third-peer target", async () => {
@@ -5990,6 +6043,46 @@ function createLateSensitiveAgentSignalPayloadProxy(authorizationId: string): Re
       }
     }
   );
+}
+
+async function withInheritedSignalPayloadToJsonHook<T>(
+  authorizationId: string,
+  callback: () => Promise<T>
+): Promise<T> {
+  const objectToJson = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+  Object.defineProperty(Object.prototype, "toJSON", {
+    configurable: true,
+    value: function inheritedSignalPayloadToJson(this: Record<string, unknown>) {
+      if (this.authorizationId !== authorizationId) {
+        return this;
+      }
+
+      return {
+        authorizationId,
+        kind: "offer",
+        screenContent: "raw-screen-content"
+      };
+    }
+  });
+
+  try {
+    return await callback();
+  } finally {
+    restorePropertyDescriptor(Object.prototype, "toJSON", objectToJson);
+  }
+}
+
+function restorePropertyDescriptor(
+  target: object,
+  key: string,
+  descriptor: PropertyDescriptor | undefined
+): void {
+  if (descriptor) {
+    Object.defineProperty(target, key, descriptor);
+    return;
+  }
+
+  delete (target as Record<string, unknown>)[key];
 }
 
 function delay(ms: number): Promise<void> {

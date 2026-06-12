@@ -460,6 +460,21 @@ The agent shell SHALL emit local `received` runtime events for `signal` messages
 - **WHEN** the managed runtime emits a local `received` event for a `signal` message
 - **THEN** the event MAY expose secret-safe metadata such as original payload byte length
 
+### Requirement: Canonical signal event byte-length metadata
+The agent shell SHALL calculate redacted sent and received `signal` runtime event byte-length metadata using the shared canonical JSON byte length, and inherited `toJSON` hooks or prototype pollution MUST NOT alter that metadata.
+
+#### Scenario: Sent signal byte length ignores inherited toJSON hooks
+- **WHEN** the managed runtime emits a local `sent` event for a valid `signal` while an inherited `toJSON` hook is present
+- **THEN** the event payload remains redacted
+- **AND** the event byte length equals the canonical JSON byte length of the signal payload
+- **AND** the event MUST NOT expose raw signal payload contents or fields injected by inherited `toJSON` hooks
+
+#### Scenario: Received signal byte length ignores inherited toJSON hooks
+- **WHEN** the managed runtime emits a local `received` event for a valid `signal` while an inherited `toJSON` hook is present
+- **THEN** the event payload remains redacted
+- **AND** the event byte length equals the canonical JSON byte length of the signal payload
+- **AND** the event MUST NOT expose raw signal payload contents or fields injected by inherited `toJSON` hooks
+
 ### Requirement: Inbound signal peer boundary
 The agent shell SHALL ignore decoded inbound `signal` messages that are not addressed to the local runtime peer or that identify the local runtime peer as the sender before emitting local `received` protocol events or received signal summary logs.
 

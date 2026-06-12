@@ -421,7 +421,7 @@ function measureSignalPayloadBytes(
   context: z.RefinementCtx
 ): number | undefined {
   try {
-    return Buffer.byteLength(JSON.stringify(payload), "utf8");
+    return Buffer.byteLength(stringifyJson(payload), "utf8");
   } catch {
     context.addIssue({
       code: z.ZodIssueCode.custom,
