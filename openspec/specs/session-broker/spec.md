@@ -68,7 +68,7 @@ The relay and agents SHALL reject `signal` protocol messages whose payload is em
 - **THEN** the relay rejects the message before forwarding it and MUST NOT treat the payload as trusted remote-assistance data
 
 ### Requirement: Development relay token
-The relay SHALL support an optional shared token for local/private development and SHALL document that production deployments require stronger identity and authorization. When a shared token is configured, peers MUST present exactly one `token` query parameter whose value exactly matches the configured shared token before joining a session room.
+The relay SHALL support an optional shared token for local/private development and SHALL document that production deployments require stronger identity and authorization. When a shared token is configured, it MUST be non-blank, 1024 UTF-8 bytes or less, contain no ASCII control characters, and peers MUST present exactly one `token` query parameter whose value exactly matches the configured shared token before joining a session room.
 
 #### Scenario: Shared token configured
 - **WHEN** the relay is started with a shared token
@@ -82,8 +82,8 @@ The relay SHALL support an optional shared token for local/private development a
 - **WHEN** the relay is started without a shared token
 - **THEN** the relay starts in development mode and logs a warning that it is not production authorization
 
-#### Scenario: Blank shared token is rejected
-- **WHEN** the relay is configured with an empty or whitespace-only shared token
+#### Scenario: Malformed shared token is rejected
+- **WHEN** the relay is configured with an empty, whitespace-only, non-string, control-character, or oversized shared token
 - **THEN** the relay rejects the configuration before accepting peer connections
 
 ### Requirement: Host-created pairing gate

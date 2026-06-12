@@ -83,6 +83,9 @@ describe("agent shell consent workflow", () => {
       ["malformed device id", { deviceId: "dev1" }, "Runtime protocol identifiers"],
       ["blank display name", { displayName: "   " }, "Runtime display name"],
       ["blank token", { token: "   " }, "Runtime token"],
+      ["non-string token", { token: null as unknown as string }, "Runtime token"],
+      ["control-character token", { token: "dev\ntoken" }, "Runtime token"],
+      ["oversized token", { token: "x".repeat(1025) }, "Runtime token"],
       [
         "invalid requested permission",
         { requestedPermissions: ["input:keylogger" as Permission] },

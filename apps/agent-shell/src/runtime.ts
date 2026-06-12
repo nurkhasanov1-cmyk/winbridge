@@ -103,6 +103,7 @@ export type AgentShellRuntime = {
 };
 
 export const MAX_AGENT_SHELL_REASON_LENGTH = 240;
+export const MAX_AGENT_SHELL_TOKEN_BYTES = 1024;
 export const MAX_AGENT_SHELL_TIMER_DELAY_MS = 2_147_483_647;
 
 const HOST_DECISION_ERROR_MESSAGE = "Host decision must be one of: none, approve, deny";
@@ -112,7 +113,8 @@ const RUNTIME_PERMISSION_ERROR_MESSAGE = "Runtime requested permissions must be 
 const RUNTIME_RELAY_URL_ERROR_MESSAGE = "Runtime relay URL must be an absolute ws or wss URL";
 const RUNTIME_REVOKE_PERMISSION_ERROR_MESSAGE = "Runtime revoke permission must be valid";
 const RUNTIME_ROLE_ERROR_MESSAGE = "Runtime role must be host or viewer";
-const RUNTIME_TOKEN_ERROR_MESSAGE = "Runtime token must not be blank";
+const RUNTIME_TOKEN_ERROR_MESSAGE =
+  "Runtime token must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
 const RUNTIME_VISIBLE_SESSION_ERROR_MESSAGE = "Runtime visibleToHost must be a boolean when provided";
 const RUNTIME_WORKFLOW_REASON_ERROR_MESSAGE =
   "Runtime workflow reasons must be non-blank and 240 characters or less";
@@ -561,9 +563,25 @@ function assertRuntimeToken(value: unknown): asserts value is string | undefined
     return;
   }
 
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    Buffer.byteLength(value, "utf8") > MAX_AGENT_SHELL_TOKEN_BYTES ||
+    hasAsciiControlCharacter(value)
+  ) {
     throw new Error(RUNTIME_TOKEN_ERROR_MESSAGE);
   }
+}
+
+function hasAsciiControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function assertRuntimeRequestedPermissions(value: unknown): asserts value is Permission[] | undefined {

@@ -194,10 +194,13 @@ describe("agent shell arguments", () => {
     expect(parseArgs(["host", "--token", "  dev-token  "], {}, 42).token).toBe(
       "  dev-token  "
     );
+    expect(parseArgs(["host", "--token", "x".repeat(1024)], {}, 42).token).toBe(
+      "x".repeat(1024)
+    );
   });
 
-  it("rejects blank relay tokens", () => {
-    for (const token of ["", "   "]) {
+  it("rejects malformed relay tokens", () => {
+    for (const token of ["", "   ", "dev\ntoken", "x".repeat(1025)]) {
       expect(() => parseArgs(["host", "--token", token], {}, 42)).toThrow(
         AgentShellUsageError
       );

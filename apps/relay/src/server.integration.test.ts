@@ -1238,16 +1238,25 @@ describe("relay runtime integration", () => {
     expect(
       createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: "  padded-token  " })
     ).toBe("  padded-token  ");
+    expect(
+      createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: "x".repeat(1024) })
+    ).toBe("x".repeat(1024));
   });
 
-  it("rejects blank development shared-token configuration", () => {
-    for (const token of ["", "   "]) {
+  it("rejects malformed development shared-token configuration", () => {
+    for (const token of ["", "   ", "dev\ntoken", "x".repeat(1025)]) {
       expect(() =>
         createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: token })
       ).toThrow("WINBRIDGE_RELAY_SHARED_TOKEN");
       expect(() => createRelayRuntime({ port: 0, sharedToken: token })).toThrow(
         "WINBRIDGE_RELAY_SHARED_TOKEN"
       );
+    }
+
+    for (const token of [null, 123]) {
+      expect(() =>
+        createRelayRuntime({ port: 0, sharedToken: token as unknown as string })
+      ).toThrow("WINBRIDGE_RELAY_SHARED_TOKEN");
     }
   });
 

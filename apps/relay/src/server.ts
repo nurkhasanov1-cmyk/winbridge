@@ -35,8 +35,11 @@ import {
 } from "./rooms.js";
 
 const MAX_RELAY_MESSAGE_BYTES = 64 * 1024;
+export const MAX_RELAY_SHARED_TOKEN_BYTES = 1024;
 const RELAY_MESSAGE_TOO_LARGE_REASON = `Relay message exceeds ${MAX_RELAY_MESSAGE_BYTES} bytes`;
 const GENERIC_RELAY_REJECTION_REASON = "Invalid relay message";
+const RELAY_SHARED_TOKEN_ERROR_MESSAGE =
+  "WINBRIDGE_RELAY_SHARED_TOKEN must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
 const SAFE_RELAY_REJECTION_REASONS = new Set([
   GENERIC_RELAY_REJECTION_REASON,
   RELAY_MESSAGE_TOO_LARGE_REASON,
@@ -682,16 +685,32 @@ export function createRelaySharedTokenConfig(
   return normalizeRelaySharedToken(env.WINBRIDGE_RELAY_SHARED_TOKEN);
 }
 
-function normalizeRelaySharedToken(sharedToken: string | undefined): string | undefined {
+function normalizeRelaySharedToken(sharedToken: unknown): string | undefined {
   if (sharedToken === undefined) {
     return undefined;
   }
 
-  if (sharedToken.trim().length === 0) {
-    throw new Error("WINBRIDGE_RELAY_SHARED_TOKEN must not be blank");
+  if (
+    typeof sharedToken !== "string" ||
+    sharedToken.trim().length === 0 ||
+    Buffer.byteLength(sharedToken, "utf8") > MAX_RELAY_SHARED_TOKEN_BYTES ||
+    hasAsciiControlCharacter(sharedToken)
+  ) {
+    throw new Error(RELAY_SHARED_TOKEN_ERROR_MESSAGE);
   }
 
   return sharedToken;
+}
+
+function hasAsciiControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function parseNonNegativeIntegerEnv(

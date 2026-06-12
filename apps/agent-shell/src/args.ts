@@ -10,6 +10,7 @@ import {
 } from "@winbridge/protocol";
 import {
   MAX_AGENT_SHELL_REASON_LENGTH,
+  MAX_AGENT_SHELL_TOKEN_BYTES,
   MAX_AGENT_SHELL_TIMER_DELAY_MS,
   parsePermissions,
   type HostDecision
@@ -298,11 +299,26 @@ function parseOptionalToken(raw: string | undefined): string | undefined {
     return undefined;
   }
 
-  if (raw.trim().length === 0) {
+  if (
+    raw.trim().length === 0 ||
+    Buffer.byteLength(raw, "utf8") > MAX_AGENT_SHELL_TOKEN_BYTES ||
+    hasAsciiControlCharacter(raw)
+  ) {
     throw new AgentShellUsageError();
   }
 
   return raw;
+}
+
+function hasAsciiControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function parseOptionalTimerDelayMs(raw: string | undefined): number | undefined {

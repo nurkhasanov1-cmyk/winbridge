@@ -61,15 +61,16 @@ Run the development relay:
 npm run dev:relay
 ```
 
-Require a non-blank local development shared token:
+Require a bounded local development shared token:
 
 ```powershell
 $env:WINBRIDGE_RELAY_SHARED_TOKEN = "dev-shared-token"
 npm run dev:relay
 ```
 
-Omit `WINBRIDGE_RELAY_SHARED_TOKEN` for local development mode. Do not set it to an empty or whitespace-only value.
-When a relay shared token is configured, pass the same non-blank value to the agent shell with `--token`; do not embed relay tokens or credentials in `--relay` URLs.
+Omit `WINBRIDGE_RELAY_SHARED_TOKEN` for local development mode. Do not set it to an empty, whitespace-only, control-character, or oversized value.
+When a relay shared token is configured, pass the same bounded value to the agent shell with `--token`; do not embed relay tokens or credentials in `--relay` URLs.
+Development shared-token values must be 1024 UTF-8 bytes or less and must not contain ASCII control characters.
 Direct development relay clients must present exactly one matching `token` query parameter; missing, duplicate, or wrong token parameters are rejected before session join.
 
 Configure the local relay port with an exact integer TCP port:

@@ -24,7 +24,7 @@ The agent shell SHALL expose a managed runtime with explicit start and stop oper
 - **AND** sending `hello` MUST NOT approve authorization, activate a visible session, grant permissions, start capture, send input, reconnect a peer, suppress host visibility, or bypass consent workflows
 
 ### Requirement: Managed runtime option validation
-The managed agent shell runtime SHALL reject malformed direct runtime options before opening a relay connection, sending protocol messages, scheduling workflow timers, or emitting authorization decisions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through the dedicated token field rather than embedded in the relay URL query string.
+The managed agent shell runtime SHALL reject malformed direct runtime options before opening a relay connection, sending protocol messages, scheduling workflow timers, or emitting authorization decisions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through the dedicated token field rather than embedded in the relay URL query string. Runtime token values MUST be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters.
 
 #### Scenario: Runtime relay URL is not WebSocket
 - **WHEN** the managed runtime is configured with a malformed, relative, or non-WebSocket relay URL
@@ -46,8 +46,8 @@ The managed agent shell runtime SHALL reject malformed direct runtime options be
 - **WHEN** the managed runtime is configured with invalid, duplicate, or oversized requested permissions
 - **THEN** it fails before connecting to the relay or sending a session authorization request
 
-#### Scenario: Runtime token is blank
-- **WHEN** the managed runtime is configured with an empty or whitespace-only token
+#### Scenario: Runtime token is malformed
+- **WHEN** the managed runtime is configured with an empty, whitespace-only, non-string, control-character, or oversized token
 - **THEN** it fails before connecting to the relay or adding the token to a relay URL
 
 #### Scenario: Runtime workflow timer is unsafe
@@ -174,7 +174,7 @@ The agent shell CLI SHALL report unexpected startup and shutdown failures withou
 - **AND** stderr output MUST NOT include raw user-provided argument values
 
 ### Requirement: Agent shell CLI argument validation
-The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through `--token` rather than embedded in `--relay` URLs.
+The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments before starting the runtime, including duplicate requested permissions. Relay URLs MUST NOT contain embedded credentials/userinfo, and relay shared-token values MUST be supplied through `--token` rather than embedded in `--relay` URLs. CLI token values MUST be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters.
 
 #### Scenario: Unknown CLI option is rejected
 - **WHEN** the agent shell is started with an option name that is not part of the documented CLI
@@ -212,8 +212,8 @@ The agent shell SHALL reject malformed, unknown, or ambiguous CLI arguments befo
 - **WHEN** the agent shell is started with an empty, whitespace-only, or oversized `--name` value
 - **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
 
-#### Scenario: Blank token option is rejected
-- **WHEN** the agent shell is started with an empty or whitespace-only `--token` value
+#### Scenario: Malformed token option is rejected
+- **WHEN** the agent shell is started with an empty, whitespace-only, control-character, or oversized `--token` value
 - **THEN** it exits through bounded usage handling before connecting to the relay or sending any protocol message
 
 #### Scenario: Oversized workflow timer option is rejected
