@@ -709,6 +709,74 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("123-456");
   });
 
+  it.each([
+    ["accessKey", { nested: { accessKey: "raw-access-key" } }, ["raw-access-key"]],
+    [
+      "access_key",
+      { nested: { access_key: "raw-access-key-underscore" } },
+      ["raw-access-key-underscore"]
+    ],
+    [
+      "access-key",
+      { nested: { "access-key": "raw-access-key-dash" } },
+      ["raw-access-key-dash"]
+    ],
+    ["array sshKey", { attempts: [{ sshKey: "raw-ssh-key" }] }, ["raw-ssh-key"]],
+    [
+      "array ssh_key",
+      { attempts: [{ ssh_key: "raw-ssh-key-underscore" }] },
+      ["raw-ssh-key-underscore"]
+    ]
+  ] satisfies Array<[string, Record<string, unknown>, string[]]>)(
+    "rejects %s signal payloads before forwarding",
+    async (_name, unsafePayload, rawValues) => {
+      const auditSink = new MemoryAuditSink();
+      const runtime = await startRuntime({ auditSink });
+      const { host, viewer } = await joinPairedSession(runtime);
+
+      host.send(
+        JSON.stringify({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload: {
+            kind: "offer",
+            authorizationId: "authz-demo",
+            ...unsafePayload
+          }
+        })
+      );
+
+      const relayError = await waitForJsonMessage(host, (message) => message.type === "relay-error");
+      expect(String(relayError.reason)).toContain("Signal payload must not contain sensitive");
+      await expectNoProtocolMessage(viewer, (message) => message.type === "signal");
+
+      const rejected = await waitForAuditRecord(
+        auditSink,
+        (record) =>
+          record.action === "relay.message.rejected" &&
+          typeof record.reason === "string" &&
+          record.reason.includes("Signal payload must not contain sensitive")
+      );
+      expect(rejected).toMatchObject({
+        action: "relay.message.rejected",
+        outcome: "failed",
+        sessionId: "session-demo",
+        detail: {
+          registered: true
+        }
+      });
+
+      const serializedRelayError = JSON.stringify(relayError);
+      const serializedRejected = JSON.stringify(rejected);
+      for (const rawValue of rawValues) {
+        expect(serializedRelayError).not.toContain(rawValue);
+        expect(serializedRejected).not.toContain(rawValue);
+      }
+    }
+  );
+
   it("rejects remote-assistance content signal payloads before forwarding", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
