@@ -54,6 +54,16 @@ describe("device identity", () => {
     ).toThrow("Display name must not be blank");
   });
 
+  it("rejects untrimmed local device display names", () => {
+    expect(() =>
+      createDeviceIdentity({
+        displayName: " Host workstation ",
+        platform: "windows",
+        deviceId: "dev_host_1"
+      })
+    ).toThrow("Display name must be trimmed");
+  });
+
   it("rejects device identity records with unknown fixed fields", () => {
     expect(() =>
       DeviceIdentitySchema.parse({

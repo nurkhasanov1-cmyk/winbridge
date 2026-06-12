@@ -209,6 +209,19 @@ describe("protocol envelopes", () => {
     ).toThrow("Display name must not be blank");
   });
 
+  it("rejects untrimmed hello display names", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName: " Host ",
+        capabilities: ["session:visible"]
+      })
+    ).toThrow("Display name must be trimmed");
+  });
+
   it("rejects blank hello capabilities", () => {
     expect(() =>
       parseProtocolEnvelope({
@@ -868,6 +881,18 @@ describe("protocol envelopes", () => {
         requestedPermissions: ["screen:view"]
       })
     ).toThrow("Display name must not be blank");
+  });
+
+  it("rejects untrimmed legacy host consent request display names", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-required",
+        viewerPeerId: "viewer-1",
+        viewerDisplayName: " Viewer ",
+        requestedPermissions: ["screen:view"]
+      })
+    ).toThrow("Display name must be trimmed");
   });
 
   it("rejects malformed legacy host consent decision grants", () => {

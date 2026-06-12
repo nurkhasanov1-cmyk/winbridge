@@ -127,13 +127,10 @@ describe("agent shell arguments", () => {
     expect(parseArgs(["viewer", "--name", "Viewer Support"], {}, 42).displayName).toBe(
       "Viewer Support"
     );
-    expect(parseArgs(["viewer", "--name", "  Viewer Support  "], {}, 42).displayName).toBe(
-      "  Viewer Support  "
-    );
   });
 
   it("rejects malformed display names", () => {
-    for (const displayName of ["", "   ", "x".repeat(121)]) {
+    for (const displayName of ["", "   ", " Viewer Support", "Viewer Support ", "x".repeat(121)]) {
       expect(() => parseArgs(["viewer", "--name", displayName], {}, 42)).toThrow(
         AgentShellUsageError
       );

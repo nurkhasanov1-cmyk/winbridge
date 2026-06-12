@@ -16,7 +16,8 @@ export const DeviceDisplayNameSchema = z
   .string()
   .min(1)
   .max(120)
-  .refine((displayName) => displayName.trim().length > 0, "Display name must not be blank");
+  .refine((displayName) => displayName.trim().length > 0, "Display name must not be blank")
+  .refine((displayName) => displayName === displayName.trim(), "Display name must be trimmed");
 export type DeviceDisplayName = z.infer<typeof DeviceDisplayNameSchema>;
 
 export const DeviceIdentitySchema = z.object({

@@ -133,6 +133,51 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("123-456");
   });
 
+  it("rejects untrimmed device identity display names before registration", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const host = await openSocket(runtime.url());
+    const privateMarker = "Host Private Display";
+
+    host.send(
+      JSON.stringify({
+        ...createMessageBase("session-demo"),
+        type: "join-session",
+        peerId: "host-1",
+        role: "host",
+        pairingCode: "123-456",
+        deviceIdentity: {
+          deviceId: "dev_host_1",
+          displayName: ` ${privateMarker} `,
+          platform: "windows",
+          trustLevel: "local-dev",
+          createdAt: new Date("2026-06-12T00:00:00.000Z").toISOString()
+        }
+      })
+    );
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    expect(auditSink.records().some((record) => record.action === "relay.peer.join.accepted")).toBe(false);
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      reason: "Invalid relay message",
+      detail: {
+        registered: false
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain(privateMarker);
+    expect(JSON.stringify(rejected)).not.toContain("123-456");
+  });
+
   it("emits schema-valid audit records for max-length peer ids", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
@@ -644,6 +689,45 @@ describe("relay runtime integration", () => {
       expect(JSON.stringify(rejected), name).not.toContain(privateMarker);
       expect(JSON.stringify(rejected), name).not.toContain("Host Private Display");
     }
+  });
+
+  it("rejects hello messages with untrimmed display names before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+    const privateMarker = "Host Private Display";
+
+    host.send(
+      JSON.stringify({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName: ` ${privateMarker} `,
+        capabilities: ["agent-shell:test"]
+      })
+    );
+
+    expect(await waitForJsonMessage(host, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    await expectNoProtocolMessage(viewer, (message) => message.type === "hello");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      reason: "Invalid relay message",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain(privateMarker);
   });
 
   it("rejects signal payloads without valid authorization ids before forwarding", async () => {
@@ -1355,6 +1439,45 @@ describe("relay runtime integration", () => {
     expect(auditSink.records().some((record) => record.reason === "Message role does not match registered peer")).toBe(
       false
     );
+  });
+
+  it("rejects legacy host consent requests with untrimmed display names before forwarding", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+    const privateMarker = "Viewer Private Display";
+
+    viewer.send(
+      JSON.stringify({
+        ...createMessageBase("session-demo"),
+        type: "host-consent-required",
+        viewerPeerId: "viewer-1",
+        viewerDisplayName: ` ${privateMarker} `,
+        requestedPermissions: ["screen:view"]
+      })
+    );
+
+    expect(await waitForJsonMessage(viewer, (message) => message.type === "relay-error")).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    await expectNoProtocolMessage(host, (message) => message.type === "host-consent-required");
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      sessionId: "session-demo",
+      reason: "Invalid relay message",
+      detail: {
+        registered: true
+      }
+    });
+    expect(JSON.stringify(rejected)).not.toContain(privateMarker);
+    expect(JSON.stringify(rejected)).not.toContain("screen:view");
   });
 
   it("rejects viewer-originated host workflow messages before forwarding", async () => {

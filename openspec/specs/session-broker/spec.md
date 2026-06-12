@@ -38,7 +38,7 @@ The relay SHALL reject a join attempt before registration when the target sessio
 - **THEN** a later join using the same `peerId` MAY be accepted through the normal pairing and room constraints
 
 ### Requirement: Message schema validation
-The relay and agents SHALL validate protocol envelopes before accepting or forwarding messages, protocol display-name metadata SHALL be non-blank after trimming whitespace, `hello` capability metadata SHALL be non-blank, already trimmed, and unique after trimming, and relay rejection errors for malformed protocol input SHALL use bounded secret-safe reasons.
+The relay and agents SHALL validate protocol envelopes before accepting or forwarding messages, protocol display-name metadata SHALL be non-blank and already trimmed, `hello` capability metadata SHALL be non-blank, already trimmed, and unique after trimming, and relay rejection errors for malformed protocol input SHALL use bounded secret-safe reasons.
 
 #### Scenario: Invalid protocol message
 - **WHEN** a peer sends malformed JSON or an unknown protocol message
@@ -46,6 +46,10 @@ The relay and agents SHALL validate protocol envelopes before accepting or forwa
 
 #### Scenario: Blank hello display name
 - **WHEN** a peer sends a `hello` protocol message with an empty or whitespace-only display name
+- **THEN** the receiver rejects the message before accepting or forwarding it as trusted peer metadata
+
+#### Scenario: Untrimmed hello display name
+- **WHEN** a peer sends a `hello` protocol message whose `displayName` has leading or trailing whitespace
 - **THEN** the receiver rejects the message before accepting or forwarding it as trusted peer metadata
 
 #### Scenario: Blank hello capability
@@ -63,6 +67,10 @@ The relay and agents SHALL validate protocol envelopes before accepting or forwa
 #### Scenario: Malformed protocol rejection reason is bounded
 - **WHEN** the relay rejects malformed JSON or schema-invalid protocol input
 - **THEN** the peer-facing relay error and audit reason MUST NOT include raw protocol payloads, parser internals, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets
+
+#### Scenario: Display-name rejection remains secret-safe
+- **WHEN** the relay rejects protocol input because display-name metadata is untrimmed
+- **THEN** the peer-facing relay error and audit reason MUST NOT include raw display names, raw protocol payloads, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets
 
 ### Requirement: Signal payload safety
 The relay and agents SHALL reject `signal` protocol messages whose payload omits a top-level string `authorizationId`, carries a malformed payload `authorizationId`, is empty, exceeds the configured protocol payload size bound, or contains keys that indicate raw tokens, credentials, pairing codes, API keys, authorization headers, auth headers, cookies, private keys, keystrokes, keylogging content, screenshots, screen data, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or secrets. Non-secret lifecycle identifiers such as `authorizationId` MUST remain permitted.
