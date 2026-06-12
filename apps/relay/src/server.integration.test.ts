@@ -323,6 +323,64 @@ describe("relay runtime integration", () => {
     await expectNoProtocolMessage(duplicateHost, (message) => message.type === "signal");
   });
 
+  it("rejects second live host joins without replacing the original host", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const host = await openSocket(runtime.url());
+    const secondHost = await openSocket(runtime.url());
+    const viewer = await openSocket(runtime.url());
+
+    host.send(joinMessage("session-demo", "host-1", "host", "123-456"));
+    await waitForProtocolMessage(host, (message) => message.type === "relay-ready");
+
+    const secondHostResponse = waitForJsonMessage(secondHost, () => true);
+    secondHost.send(joinMessage("session-demo", "host-2", "host", "999-000"));
+    expect(await secondHostResponse).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    await expectNoProtocolMessage(secondHost, (message) => message.type === "relay-ready");
+
+    const denied = await waitForAuditRecord(
+      auditSink,
+      (record) => record.action === "relay.peer.join.denied" && record.reason === "Invalid relay message"
+    );
+    expectNoAcceptedJoinAudit(auditSink, "host-2");
+    expect(denied).toMatchObject({
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      detail: {
+        messageType: "join-session",
+        pairing: {
+          duplicatePeer: false
+        }
+      }
+    });
+    expect(JSON.stringify(denied)).not.toContain("999-000");
+    expect(JSON.stringify(denied)).not.toContain("123-456");
+
+    viewer.send(joinMessage("session-demo", "viewer-1", "viewer", "123-456"));
+    await waitForProtocolMessage(viewer, (message) => message.type === "relay-ready");
+
+    viewer.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "viewer-1",
+        toPeerId: "host-1",
+        payload: { authorizationId: "authz-demo", kind: "original-host-after-role-denial" }
+      })
+    );
+
+    expect(await waitForProtocolMessage(host, (message) => message.type === "signal")).toMatchObject({
+      type: "signal",
+      fromPeerId: "viewer-1",
+      payload: { authorizationId: "authz-demo", kind: "original-host-after-role-denial" }
+    });
+    expectNoAcceptedJoinAudit(auditSink, "host-2");
+    await expectNoProtocolMessage(secondHost, (message) => message.type === "signal");
+  });
+
   it("rejects duplicate live viewer joins without replacing the original viewer", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
@@ -367,6 +425,57 @@ describe("relay runtime integration", () => {
       payload: { authorizationId: "authz-demo", kind: "original-viewer-continuity" }
     });
     await expectNoProtocolMessage(duplicateViewer, (message) => message.type === "signal");
+  });
+
+  it("rejects second live viewer joins without replacing the original viewer", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+    const secondViewer = await openSocket(runtime.url());
+
+    const secondViewerResponse = waitForJsonMessage(secondViewer, () => true);
+    secondViewer.send(joinMessage("session-demo", "viewer-2", "viewer", "999-000"));
+    expect(await secondViewerResponse).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    await expectNoProtocolMessage(secondViewer, (message) => message.type === "relay-ready");
+
+    const denied = await waitForAuditRecord(
+      auditSink,
+      (record) => record.action === "relay.peer.join.denied" && record.reason === "Invalid relay message"
+    );
+    expectNoAcceptedJoinAudit(auditSink, "viewer-2");
+    expect(denied).toMatchObject({
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      detail: {
+        messageType: "join-session",
+        pairing: {
+          duplicatePeer: false
+        }
+      }
+    });
+    expect(JSON.stringify(denied)).not.toContain("999-000");
+    expect(JSON.stringify(denied)).not.toContain("123-456");
+
+    host.send(
+      encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "host-1",
+        toPeerId: "viewer-1",
+        payload: { authorizationId: "authz-demo", kind: "original-viewer-after-role-denial" }
+      })
+    );
+
+    expect(await waitForProtocolMessage(viewer, (message) => message.type === "signal")).toMatchObject({
+      type: "signal",
+      fromPeerId: "host-1",
+      payload: { authorizationId: "authz-demo", kind: "original-viewer-after-role-denial" }
+    });
+    expectNoAcceptedJoinAudit(auditSink, "viewer-2");
+    await expectNoProtocolMessage(secondViewer, (message) => message.type === "signal");
   });
 
   it("allows the same peer id to rejoin after disconnect cleanup", async () => {
@@ -2504,6 +2613,17 @@ function waitForAuditRecord(
       poll();
     })
   );
+}
+
+function expectNoAcceptedJoinAudit(auditSink: MemoryAuditSink, peerId: string): void {
+  expect(
+    auditSink.records().some((record) => {
+      return (
+        record.action === "relay.peer.join.accepted" &&
+        record.actor.id === `development-relay:${peerId}`
+      );
+    })
+  ).toBe(false);
 }
 
 function waitForClose(socket: WebSocket): Promise<{ code: number; reason: string }> {

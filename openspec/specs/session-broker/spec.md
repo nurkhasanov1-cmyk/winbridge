@@ -21,6 +21,16 @@ The relay SHALL limit each development session room to one host peer and one vie
 - **WHEN** a session room already contains a host and a viewer
 - **THEN** the relay rejects additional peers for that room
 
+#### Scenario: Second host attempts to join
+- **WHEN** a session room already contains a live host and another socket attempts to join the same session as a host with a different `peerId`
+- **THEN** the relay rejects the second host before registration
+- **AND** the original host remains the registered host
+
+#### Scenario: Second viewer attempts to join
+- **WHEN** a session room already contains a live viewer and another socket attempts to join the same session as a viewer with a different `peerId`
+- **THEN** the relay rejects the second viewer before registration
+- **AND** the original viewer remains the registered viewer
+
 ### Requirement: Live peer identity exclusivity
 The relay SHALL reject a join attempt before registration when the target session already has a live registered peer with the same `peerId`, and SHALL NOT replace the existing peer connection or treat the duplicate join as an authorized reconnect.
 
