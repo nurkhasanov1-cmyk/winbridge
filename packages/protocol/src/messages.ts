@@ -64,7 +64,8 @@ const ProtocolCapabilitySchema = z
   .string()
   .min(1)
   .max(80)
-  .refine((capability) => capability.trim().length > 0, "Capability must not be blank");
+  .refine((capability) => capability.trim().length > 0, "Capability must not be blank")
+  .refine((capability) => capability === capability.trim(), "Capability must be trimmed");
 const SignalPayloadSchema = createJsonObjectSchema(
   "Signal payload must be JSON-compatible"
 );
@@ -414,7 +415,10 @@ function rejectDuplicatePermissions(
 }
 
 function rejectDuplicateCapabilities(capabilities: unknown[], context: z.RefinementCtx): void {
-  if (new Set(capabilities).size === capabilities.length) {
+  const normalizedCapabilities = capabilities.map((capability) =>
+    typeof capability === "string" ? capability.trim() : capability
+  );
+  if (new Set(normalizedCapabilities).size === normalizedCapabilities.length) {
     return;
   }
 

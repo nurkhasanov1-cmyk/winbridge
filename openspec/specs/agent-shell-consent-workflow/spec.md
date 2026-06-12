@@ -23,6 +23,26 @@ The agent shell SHALL expose a managed runtime with explicit start and stop oper
 - **THEN** it sends exactly one `hello` for its local peer before later workflow messages that depend on peer presence
 - **AND** sending `hello` MUST NOT approve authorization, activate a visible session, grant permissions, start capture, send input, reconnect a peer, suppress host visibility, or bypass consent workflows
 
+### Requirement: Hello capability metadata remains canonical
+The agent shell SHALL rely on shared protocol validation for generated, inbound, and public-send `hello` capability metadata. `hello` capability metadata that is blank, untrimmed, or duplicate after trimming MUST be rejected before it can create peer presence, authorize public sends, emit trusted local `received` or `sent` events, or trigger consent workflow messages.
+
+#### Scenario: Inbound untrimmed capability is rejected
+- **WHEN** the runtime receives a `hello`-shaped payload whose capability entry has leading or trailing whitespace
+- **THEN** the runtime rejects it before local `received` protocol event emission or peer presence handling
+
+#### Scenario: Inbound trim-duplicate capability is rejected
+- **WHEN** the runtime receives a `hello`-shaped payload with capability entries that duplicate after trimming
+- **THEN** the runtime rejects it before local `received` protocol event emission or peer presence handling
+
+#### Scenario: Public hello with untrimmed capability is blocked
+- **WHEN** caller code invokes public runtime `send()` with a same-session `hello` whose capability entry has leading or trailing whitespace
+- **THEN** the runtime rejects the send before writing to the socket
+- **AND** the runtime MUST NOT emit a local `sent` event for that blocked hello
+
+#### Scenario: Rejected capability diagnostics remain secret-safe
+- **WHEN** the runtime rejects a `hello` because of malformed capability metadata
+- **THEN** thrown errors, runtime events, and logs MUST NOT expose raw capability values, protocol payloads, display names, tokens, pairing codes, private reasons, keystrokes, screenshots, screen contents, or input contents
+
 ### Requirement: Inbound self-hello boundary
 The agent shell SHALL ignore decoded inbound `hello` messages whose `peerId` equals the local runtime peer before emitting local `received` protocol events or running peer presence workflow handling.
 

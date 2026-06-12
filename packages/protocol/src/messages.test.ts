@@ -222,6 +222,19 @@ describe("protocol envelopes", () => {
     ).toThrow("Capability must not be blank");
   });
 
+  it("rejects untrimmed hello capabilities", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName: "Host",
+        capabilities: ["session:visible", " consent:required"]
+      })
+    ).toThrow("Capability must be trimmed");
+  });
+
   it("rejects duplicate hello capabilities", () => {
     expect(() =>
       parseProtocolEnvelope({
@@ -231,6 +244,19 @@ describe("protocol envelopes", () => {
         role: "host",
         displayName: "Host",
         capabilities: ["session:visible", "session:visible"]
+      })
+    ).toThrow("capabilities must be unique");
+  });
+
+  it("rejects trim-duplicate hello capabilities", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName: "Host",
+        capabilities: ["session:visible", "session:visible "]
       })
     ).toThrow("capabilities must be unique");
   });

@@ -400,6 +400,75 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("treats inbound hello messages with malformed capabilities as raw unsafe input", async () => {
+    const cases: Array<{
+      name: string;
+      capabilities: string[];
+      privateMarker: string;
+    }> = [
+      {
+        name: "untrimmed capability",
+        capabilities: ["session:visible", "capability-private-marker "],
+        privateMarker: "capability-private-marker"
+      },
+      {
+        name: "trim-duplicate capability",
+        capabilities: ["session:visible", "session:visible "],
+        privateMarker: "session:visible "
+      }
+    ];
+
+    for (const { capabilities, name, privateMarker } of cases) {
+      const server = await startViewerAuthorizationLifecycleServer(() => [
+        JSON.stringify({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId: "viewer-1",
+          role: "viewer",
+          displayName: "Viewer Private Display",
+          capabilities
+        })
+      ]);
+      const hostEvents: AgentShellEvent[] = [];
+      const hostLogs: string[] = [];
+      let host: AgentShellRuntime | undefined;
+
+      try {
+        host = createAgentShellRuntime(createRuntimeOptions({
+          relayUrl: server.url,
+          logger: captureLogger(hostLogs),
+          onEvent: (event) => hostEvents.push(event)
+        }));
+        await host.start();
+
+        const rawEvent = await waitForRawEvent(hostEvents);
+        await delay(100);
+
+        expect(rawEvent, name).toMatchObject({
+          direction: "raw",
+          text: "[REDACTED]",
+          byteLength: expect.any(Number)
+        });
+        expect(hostEvents.some((event) => event.direction === "received"), name).toBe(false);
+        expect(
+          hostEvents.some((event) => event.direction === "sent" && event.message.type === "hello"),
+          name
+        ).toBe(false);
+
+        const serializedEvents = JSON.stringify(hostEvents);
+        const logOutput = hostLogs.join("\n");
+        expect(logOutput, name).toContain("received non-protocol message bytes=");
+        expect(logOutput, name).not.toContain(privateMarker);
+        expect(logOutput, name).not.toContain("Viewer Private Display");
+        expect(serializedEvents, name).not.toContain(privateMarker);
+        expect(serializedEvents, name).not.toContain("Viewer Private Display");
+      } finally {
+        await host?.stop();
+        await server.stop();
+      }
+    }
+  });
+
   it("allows host signal sends after active visible authorization and redacts payload contents", async () => {
     const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
@@ -5224,6 +5293,59 @@ describe("agent shell consent workflow", () => {
     ).toThrow();
 
     expect(hostEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountBefore);
+  });
+
+  it("blocks public hello sends with malformed capabilities before socket write or sent events", async () => {
+    const cases: Array<{
+      name: string;
+      capabilities: string[];
+      privateMarker: string;
+    }> = [
+      {
+        name: "untrimmed capability",
+        capabilities: ["agent-shell:test", "capability-public-private-marker "],
+        privateMarker: "capability-public-private-marker"
+      },
+      {
+        name: "trim-duplicate capability",
+        capabilities: ["agent-shell:test", "agent-shell:test "],
+        privateMarker: "agent-shell:test "
+      }
+    ];
+
+    for (const { capabilities, name, privateMarker } of cases) {
+      const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost();
+      await startViewer(relay.url(), [], viewerEvents);
+      await waitForMessage(hostEvents, (message) => message.type === "hello");
+
+      const sentCountBefore = hostEvents.filter((event) => event.direction === "sent").length;
+      const viewerReceivedHelloCountBefore = viewerEvents.filter(
+        (event) => event.direction === "received" && event.message.type === "hello"
+      ).length;
+
+      expect(() =>
+        host.send({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId: "host-1",
+          role: "host",
+          displayName: "Host Private Display",
+          capabilities
+        } as ProtocolEnvelope)
+      ).toThrow();
+
+      await delay(50);
+
+      expect(hostEvents.filter((event) => event.direction === "sent"), name).toHaveLength(sentCountBefore);
+      expect(
+        viewerEvents.filter((event) => event.direction === "received" && event.message.type === "hello"),
+        name
+      ).toHaveLength(viewerReceivedHelloCountBefore);
+      expect(JSON.stringify(hostEvents), name).not.toContain(privateMarker);
+      expect(JSON.stringify(viewerEvents), name).not.toContain(privateMarker);
+      expect(JSON.stringify(hostEvents), name).not.toContain("Host Private Display");
+      expect(JSON.stringify(viewerEvents), name).not.toContain("Host Private Display");
+    }
   });
 
   it("blocks public sends with unknown fixed fields before socket write or sent events", async () => {

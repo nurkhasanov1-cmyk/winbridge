@@ -588,6 +588,64 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain(privateMarker);
   });
 
+  it("rejects hello messages with malformed capability metadata before forwarding", async () => {
+    const cases: Array<{
+      name: string;
+      capabilities: string[];
+      privateMarker: string;
+    }> = [
+      {
+        name: "untrimmed capability",
+        capabilities: ["agent-shell:test", "capability-private-marker "],
+        privateMarker: "capability-private-marker"
+      },
+      {
+        name: "trim-duplicate capability",
+        capabilities: ["agent-shell:test", "agent-shell:test "],
+        privateMarker: "agent-shell:test "
+      }
+    ];
+
+    for (const { capabilities, name, privateMarker } of cases) {
+      const auditSink = new MemoryAuditSink();
+      const runtime = await startRuntime({ auditSink });
+      const { host, viewer } = await joinPairedSession(runtime);
+
+      host.send(
+        JSON.stringify({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId: "host-1",
+          role: "host",
+          displayName: "Host Private Display",
+          capabilities
+        })
+      );
+
+      expect(await waitForJsonMessage(host, (message) => message.type === "relay-error"), name).toEqual({
+        type: "relay-error",
+        reason: "Invalid relay message"
+      });
+      await expectNoProtocolMessage(viewer, (message) => message.type === "hello");
+
+      const rejected = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+      );
+      expect(rejected, name).toMatchObject({
+        action: "relay.message.rejected",
+        outcome: "failed",
+        sessionId: "session-demo",
+        reason: "Invalid relay message",
+        detail: {
+          registered: true
+        }
+      });
+      expect(JSON.stringify(rejected), name).not.toContain(privateMarker);
+      expect(JSON.stringify(rejected), name).not.toContain("Host Private Display");
+    }
+  });
+
   it("rejects signal payloads without valid authorization ids before forwarding", async () => {
     const cases: Array<{
       name: string;
