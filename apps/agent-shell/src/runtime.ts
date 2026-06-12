@@ -329,6 +329,11 @@ function handleMessage(
     return;
   }
 
+  if (isInboundLegacyHostConsentDecision(envelope)) {
+    reportIgnoredUnsafeProtocolMessage(text, options);
+    return;
+  }
+
   if (isUntrustedViewerAuthorizationLifecycleMessage(envelope, options, sessionState)) {
     reportIgnoredUnsafeProtocolMessage(text, options);
     return;
@@ -426,6 +431,10 @@ function isSelfAuthorityWorkflowMessage(
       envelope.type === "audit-event") &&
     envelope.actorPeerId === options.peerId
   );
+}
+
+function isInboundLegacyHostConsentDecision(envelope: ProtocolEnvelope): boolean {
+  return envelope.type === "host-consent-decision";
 }
 
 function isUntrustedViewerAuthorizationLifecycleMessage(

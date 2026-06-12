@@ -2245,6 +2245,71 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("ignores inbound legacy host consent decisions before authorizing signal sends", async () => {
+    const legacyDecisionServer = await startViewerAuthorizationLifecycleServer(() => [
+      {
+        ...createMessageBase("session-demo"),
+        type: "host-consent-decision",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        approved: true,
+        grantedPermissions: ["screen:view"],
+        reason: "private legacy decision reason legacy-grant-marker raw-token"
+      }
+    ]);
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        legacyDecisionServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      const rawEvent = await waitForRawEvent(viewerEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(rawEvent.byteLength).toBeGreaterThan(0);
+      expect(
+        viewerEvents.some(
+          (event) =>
+            event.direction === "received" && event.message.type === "host-consent-decision"
+        )
+      ).toBe(false);
+
+      await expectViewerSignalSendBlocked(
+        viewer,
+        viewerEvents,
+        "blocked-after-legacy-decision-payload",
+        viewerLogs
+      );
+      const serializedEvents = JSON.stringify(viewerEvents);
+      const logOutput = viewerLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("host-consent-decision");
+      expect(logOutput).not.toContain("host-1");
+      expect(logOutput).not.toContain("private legacy decision reason");
+      expect(logOutput).not.toContain("legacy-grant-marker");
+      expect(logOutput).not.toContain("raw-token");
+      expect(serializedEvents).not.toContain("host-consent-decision");
+      expect(serializedEvents).not.toContain("host-1");
+      expect(serializedEvents).not.toContain("private legacy decision reason");
+      expect(serializedEvents).not.toContain("legacy-grant-marker");
+      expect(serializedEvents).not.toContain("raw-token");
+    } finally {
+      await viewer?.stop();
+      await legacyDecisionServer.stop();
+    }
+  });
+
   it("ignores mismatched viewer authorization authority before signal authorization", async () => {
     const mismatchedServer = await startViewerAuthorizationLifecycleServer(() => {
       const expiresAt = new Date(Date.now() + 60_000).toISOString();

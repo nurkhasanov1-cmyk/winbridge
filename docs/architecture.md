@@ -122,7 +122,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Runtime `sent` events use schema-normalized event-safe protocol views; audit-event details and join-session pairing codes are redacted from the local event surface.
 - Runtime `sent` events for `signal` messages expose routing metadata and redacted payload summaries, not raw signal payload contents.
 - Viewer-originated `signal` sends fail closed unless the viewer has observed an active, visible, unexpired `screen:view` authorization state.
-- Viewer-side authorization lifecycle state is bound to the host authority from a decision addressed to the local viewer; unbound, mismatched, denied-to-active, or prior-connection state/control/revoke messages are ignored before received-event emission and cannot unlock `signal` sends.
+- Viewer-side authorization lifecycle state is bound to the host authority from a decision addressed to the local viewer; inbound legacy consent decisions plus unbound, mismatched, denied-to-active, or prior-connection state/control/revoke messages are ignored before received-event emission and cannot unlock `signal` sends.
 - Runtime `received` events for `signal` messages expose routing metadata and redacted payload summaries, not raw signal payload contents.
 - Host inbound `signal` messages are ignored before local received-event emission unless the host has locally emitted an active, visible, unexpired `screen:view` authorization state.
 - Host-originated public runtime `signal` sends fail closed before socket write and local sent-event emission unless the host has locally emitted an active, visible, unexpired `screen:view` authorization state.

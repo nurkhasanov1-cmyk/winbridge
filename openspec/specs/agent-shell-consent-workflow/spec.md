@@ -141,7 +141,7 @@ The agent shell SHALL block viewer-originated `signal` sends before socket write
 - **THEN** thrown errors, runtime events, and logs MUST NOT expose raw signal payloads, signal payload keys, tokens, pairing codes, authorization reasons, keystrokes, screenshots, screen contents, or input contents
 
 ### Requirement: Viewer authorization authority binding
-The agent shell SHALL bind viewer-side authorization lifecycle state to the host authority from a `session-authorization-decision` addressed to the local viewer before using lifecycle messages to authorize viewer-originated `signal` sends.
+The agent shell SHALL bind viewer-side authorization lifecycle state to the host authority from a `session-authorization-decision` addressed to the local viewer before using lifecycle messages to authorize viewer-originated `signal` sends. The viewer runtime MUST ignore inbound legacy `host-consent-decision` messages before local `received` protocol event emission and MUST NOT treat them as authorization decisions.
 
 #### Scenario: Viewer ignores authorization state without bound decision
 - **WHEN** a viewer runtime receives a decoded `session-authorization-state` before it has received a `session-authorization-decision` for the local viewer and matching authorization id
@@ -153,6 +153,11 @@ The agent shell SHALL bind viewer-side authorization lifecycle state to the host
 - **AND** it then receives `session-authorization-state`, `permission-revoked`, or `session-control` from a different actor authority for the same session
 - **THEN** the runtime MUST ignore the mismatched lifecycle message before local `received` protocol event emission
 - **AND** the mismatched message MUST NOT grant, restore, pause, revoke, terminate, or otherwise alter viewer signal-send authorization
+
+#### Scenario: Viewer ignores legacy host consent decision
+- **WHEN** a viewer runtime receives a decoded legacy `host-consent-decision` addressed to the local viewer
+- **THEN** the runtime MUST ignore that legacy decision before local `received` protocol event emission
+- **AND** the ignored legacy decision MUST NOT bind host authority, grant permissions, activate visibility, authorize viewer-originated `signal` sends, start capture, send input, suppress host visibility, or bypass consent workflows
 
 #### Scenario: Viewer ignores decisions for another viewer
 - **WHEN** a viewer runtime receives a `session-authorization-decision` whose `viewerPeerId` does not identify the local viewer
@@ -171,9 +176,9 @@ The agent shell SHALL bind viewer-side authorization lifecycle state to the host
 - **AND** viewer-originated `signal` sends MUST be rejected until the restarted runtime receives a new local-viewer decision and matching active visible state
 
 #### Scenario: Ignored viewer authorization authority diagnostics are secret-safe
-- **WHEN** the viewer runtime ignores an unbound or mismatched authorization lifecycle message
+- **WHEN** the viewer runtime ignores an unbound or mismatched authorization lifecycle message, or ignores a legacy host consent decision
 - **THEN** local events and logs expose only redacted summary metadata such as byte length
-- **AND** they MUST NOT expose raw protocol payloads, session ids, peer ids, authorization ids, actor ids, signal payloads, tokens, pairing codes, private reasons, keystrokes, screenshots, screen contents, or input contents
+- **AND** they MUST NOT expose raw protocol payloads, session ids, peer ids, authorization ids, actor ids, signal payloads, tokens, pairing codes, private reasons, grant scopes, keystrokes, screenshots, screen contents, or input contents
 
 ### Requirement: Host inbound signal authorization gate
 The agent shell SHALL ignore inbound `signal` messages at the host before local `received` event emission or received signal summary logging unless the host runtime has locally emitted an active, visible, unexpired authorization state that grants `screen:view`.
