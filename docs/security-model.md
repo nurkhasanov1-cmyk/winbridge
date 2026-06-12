@@ -110,6 +110,7 @@ The non-native agent shell can simulate consent messages for development:
 - Session termination simulation requires explicit visible approval plus `--terminate-after-ms`.
 - Host local disconnect simulation requires explicit visible approval plus `--disconnect-after-ms`. It closes the host relay connection and relies on the relay to emit `peer-disconnected`; the host shell must not send forged disconnect notices.
 - Delayed revocation, termination, pause, resume, and disconnect simulations are suppressed if authorization expiration wins before their timers send.
+- Local host `indicator` runtime events activate only after explicit visible approval, update for pause/resume/permission lifecycle, and deactivate on final revocation, termination, expiration, local disconnect, runtime stop, socket close, or trusted remote peer disconnect. Indicator events are local UI metadata only and do not grant permissions, start capture, send input, reconnect peers, suppress host visibility, or bypass consent workflows.
 - Development `audit-event` messages are emitted for host decisions, visible activation, revocation, termination, expiration, pause, and resume using secret-safe metadata only.
 - Host workflow audit records can be persisted locally with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
 - Local runtime `sent` events expose a schema-validated event-safe protocol view; audit-event details and raw pairing codes are redacted from the local event surface.

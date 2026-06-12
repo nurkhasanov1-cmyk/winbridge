@@ -138,7 +138,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
 
-This still does not capture the screen or send input. It only sends session authorization protocol messages.
+This still does not capture the screen or send input. It only sends session authorization protocol messages and local secret-safe host indicator events for development UI wiring.
 
 Persist development host workflow audit records as JSONL:
 
@@ -159,7 +159,7 @@ npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:vi
 
 Workflow timer values must be exact integer milliseconds from `0` through `2147483647`.
 
-Expiration simulation sends protocol state and audit messages only.
+Expiration simulation sends protocol state, local host indicator, and audit messages only.
 
 Simulate host pause/resume during development:
 
@@ -168,7 +168,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
 
-Pause/resume simulation only sends protocol state, control, and audit messages. It does not perform remote actions.
+Pause/resume simulation only sends protocol state, control, local host indicator, and audit messages. It does not perform remote actions.
 
 Simulate host revocation during development:
 
@@ -177,7 +177,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
 
-Revocation simulation sends bound protocol control, notification, state, and audit messages only; it does not perform remote actions.
+Revocation simulation sends bound protocol control, notification, state, local host indicator, and audit messages only; it does not perform remote actions.
 
 Simulate host session termination during development:
 
@@ -186,7 +186,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
 
-Termination simulation only sends protocol messages; it does not capture the screen, send input, or install any background service.
+Termination simulation only sends protocol and local host indicator messages; it does not capture the screen, send input, or install any background service.
 
 Simulate host local disconnect during development:
 
@@ -195,7 +195,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
 
-Disconnect simulation closes the host relay connection after visible activation. It does not send forged disconnect notices; the relay observes the close and sends `peer-disconnected` to the viewer.
+Disconnect simulation closes the host relay connection after visible activation and deactivates the local host indicator. It does not send forged disconnect notices; the relay observes the close and sends `peer-disconnected` to the viewer.
 
 ## OpenSpec
 

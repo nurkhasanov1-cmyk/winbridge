@@ -118,6 +118,7 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Host mode can simulate authorization expiration after visible activation with `--authorization-ttl-ms`.
 - Host mode can simulate pause/resume only after explicit visible approval with `--pause-after-ms` and optional `--resume-after-ms`.
 - Host mode can simulate local disconnect only after explicit visible approval with `--disconnect-after-ms`; the host closes its relay WebSocket and the relay remains responsible for `peer-disconnected` notices.
+- Host mode emits local secret-safe `indicator` runtime events for visible-session UI wiring after explicit visible activation, updates them for pause/resume/permission changes, and deactivates them on terminal lifecycle, disconnect, runtime stop, or socket close. Indicator events do not authorize remote actions.
 - Host mode emits development `audit-event` protocol messages for decision, activation, revocation, termination, expiration, pause, and resume workflow events.
 - Host mode can persist those host-generated workflow audit events to JSONL with `--audit-log` or `WINBRIDGE_AGENT_AUDIT_LOG_PATH`.
 - Host mode records `peer-disconnected` as remote peer disconnected state and suppresses later delayed workflow simulation messages and direct managed runtime sends for that peer.

@@ -65,9 +65,32 @@ export type AgentShellRuntimeOptions = {
 export type AgentShellEvent =
   | { direction: "sent"; message: AgentShellSentProtocolEnvelope }
   | { direction: "received"; message: AgentShellReceivedProtocolEnvelope }
+  | AgentShellHostIndicatorEvent
   | { direction: "raw"; text: typeof REDACTED_EVENT_VALUE; byteLength: number }
   | { direction: "error"; error: Error; messageBytes: number }
   | { direction: "closed"; code: number; reason: typeof REDACTED_EVENT_VALUE; reasonBytes: number };
+
+export type AgentShellHostIndicatorEvent = {
+  direction: "indicator";
+  role: "host";
+  state: "active" | "paused" | "inactive";
+  authorizationId: string;
+  authorizationStatus: SessionAuthorizationStatus;
+  visibleToHost: boolean;
+  permissionCount: number;
+  cause:
+    | "activated"
+    | "paused"
+    | "resumed"
+    | "permission-revoked"
+    | "revoked"
+    | "terminated"
+    | "expired"
+    | "local-disconnect"
+    | "peer-disconnected"
+    | "runtime-stop"
+    | "socket-closed";
+};
 
 export type AgentShellErrorDiagnostic = {
   messageBytes: number;
@@ -170,6 +193,7 @@ type AgentShellSessionState = {
   helloSent: boolean;
   hostAuthorization?: RuntimeAuthorizationSnapshot;
   viewerAuthorization?: RuntimeAuthorizationSnapshot;
+  hostIndicator?: AgentShellHostIndicatorEvent;
 };
 
 type RuntimeAuthorizationSnapshot = {
@@ -222,6 +246,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
 
       socket.on("close", (code, reason) => {
         const reasonBytes = reason.length;
+        deactivateHostIndicator(options, sessionState, "socket-closed");
         const event = { direction: "closed", code, reason: REDACTED_EVENT_VALUE, reasonBytes } as const;
         options.onEvent?.(event);
         logger.log(`[winbridge-agent] disconnected code=${code} reasonBytes=${reasonBytes}`);
@@ -263,6 +288,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
         clearTimeout(timer);
       }
       timers.clear();
+      deactivateHostIndicator(options, sessionState, "runtime-stop");
       resetConnectionScopedSessionState(sessionState);
 
       const socketToClose = socket;
@@ -311,6 +337,7 @@ function resetConnectionScopedSessionState(sessionState: AgentShellSessionState)
   sessionState.helloSent = false;
   sessionState.hostAuthorization = undefined;
   sessionState.viewerAuthorization = undefined;
+  sessionState.hostIndicator = undefined;
 }
 
 function handleMessage(
@@ -402,6 +429,7 @@ function handleMessage(
       sessionState.recipientAvailable = false;
       sessionState.observedPeerId = undefined;
       sessionState.observedPeerRole = undefined;
+      deactivateHostIndicator(options, sessionState, "peer-disconnected");
     }
 
     if (envelope.type === "relay-ready" && envelope.roomSize >= 2) {
@@ -1032,6 +1060,7 @@ function handleHostAuthorizationRequest(
     permissions: request.requestedPermissions,
     expiresAt
   });
+  emitHostIndicatorFromAuthorization(options, sessionState, "activated");
   sendProtocol(socket, options, {
     ...createMessageBase(options.sessionId),
     type: "session-authorization-state",
@@ -1060,6 +1089,102 @@ function setHostAuthorizationSnapshot(
     remotePeerId: input.remotePeerId ?? sessionState.hostAuthorization?.remotePeerId,
     permissions: [...input.permissions]
   };
+}
+
+function emitHostIndicatorFromAuthorization(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  cause: AgentShellHostIndicatorEvent["cause"]
+): void {
+  if (options.role !== "host") {
+    return;
+  }
+
+  const snapshot = sessionState.hostAuthorization;
+  if (!snapshot?.visibleToHost) {
+    return;
+  }
+
+  const state = hostIndicatorStateForAuthorization(snapshot.status);
+  emitHostIndicator(options, sessionState, {
+    direction: "indicator",
+    role: "host",
+    state,
+    authorizationId: snapshot.authorizationId,
+    authorizationStatus: snapshot.status,
+    visibleToHost: state !== "inactive",
+    permissionCount: state === "inactive" ? 0 : snapshot.permissions.length,
+    cause
+  });
+}
+
+function deactivateHostIndicator(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  cause: AgentShellHostIndicatorEvent["cause"]
+): void {
+  if (options.role !== "host" || !sessionState.hostIndicator || sessionState.hostIndicator.state === "inactive") {
+    return;
+  }
+
+  const snapshot = sessionState.hostAuthorization;
+  emitHostIndicator(options, sessionState, {
+    direction: "indicator",
+    role: "host",
+    state: "inactive",
+    authorizationId: snapshot?.authorizationId ?? sessionState.hostIndicator.authorizationId,
+    authorizationStatus: snapshot?.status ?? sessionState.hostIndicator.authorizationStatus,
+    visibleToHost: false,
+    permissionCount: 0,
+    cause
+  });
+}
+
+function emitHostIndicator(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  event: AgentShellHostIndicatorEvent
+): void {
+  if (isSameHostIndicator(sessionState.hostIndicator, event)) {
+    return;
+  }
+
+  sessionState.hostIndicator = event;
+  options.onEvent?.(event);
+  options.logger?.log(
+    `[winbridge-agent] host indicator state=${event.state} authorizationStatus=${event.authorizationStatus} ` +
+      `authorizationId=${event.authorizationId} visibleToHost=${event.visibleToHost} ` +
+      `permissionCount=${event.permissionCount} cause=${event.cause}`
+  );
+}
+
+function isSameHostIndicator(
+  previous: AgentShellHostIndicatorEvent | undefined,
+  next: AgentShellHostIndicatorEvent
+): boolean {
+  return (
+    Boolean(previous) &&
+    previous?.state === next.state &&
+    previous.authorizationId === next.authorizationId &&
+    previous.authorizationStatus === next.authorizationStatus &&
+    previous.visibleToHost === next.visibleToHost &&
+    previous.permissionCount === next.permissionCount &&
+    previous.cause === next.cause
+  );
+}
+
+function hostIndicatorStateForAuthorization(
+  status: SessionAuthorizationStatus
+): AgentShellHostIndicatorEvent["state"] {
+  if (status === "active") {
+    return "active";
+  }
+
+  if (status === "paused") {
+    return "paused";
+  }
+
+  return "inactive";
 }
 
 function assertValidHostDecision(value: unknown): asserts value is HostDecision | undefined {
@@ -1344,6 +1469,11 @@ function scheduleHostRevoke(
       permissions: remainingPermissions,
       expiresAt
     });
+    emitHostIndicatorFromAuthorization(
+      options,
+      sessionState,
+      finalGrantRevoked ? "revoked" : "permission-revoked"
+    );
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-control",
@@ -1435,6 +1565,7 @@ function scheduleHostPause(
       permissions: workflowState.permissions,
       expiresAt
     });
+    emitHostIndicatorFromAuthorization(options, sessionState, "paused");
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-control",
@@ -1525,6 +1656,7 @@ function scheduleHostResume(
       permissions: workflowState.permissions,
       expiresAt
     });
+    emitHostIndicatorFromAuthorization(options, sessionState, "resumed");
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-authorization-state",
@@ -1589,6 +1721,7 @@ function scheduleHostTerminate(
       permissions: [],
       expiresAt
     });
+    emitHostIndicatorFromAuthorization(options, sessionState, "terminated");
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-control",
@@ -1655,6 +1788,7 @@ function scheduleHostExpiration(
       permissions: [],
       expiresAt
     });
+    emitHostIndicatorFromAuthorization(options, sessionState, "expired");
     sendProtocol(socket, options, {
       ...createMessageBase(options.sessionId),
       type: "session-authorization-state",
@@ -1699,6 +1833,7 @@ function scheduleHostDisconnect(
     }
 
     sessionState.localPeerDisconnected = true;
+    deactivateHostIndicator(options, sessionState, "local-disconnect");
     options.logger?.log("[winbridge-agent] disconnect simulation closing local relay connection");
     socket?.close(1000, "Host disconnect simulation");
   }, options.hostDisconnectAfterMs);

@@ -17,6 +17,7 @@ import {
   createAgentShellRuntime,
   formatAgentShellErrorLog,
   type AgentShellEvent,
+  type AgentShellHostIndicatorEvent,
   type AgentShellReceivedProtocolEnvelope,
   type AgentShellSentProtocolEnvelope,
   type AgentShellRuntimeOptions,
@@ -1050,8 +1051,58 @@ describe("agent shell consent workflow", () => {
     });
   });
 
+  it("emits a secret-safe host indicator after visible activation", async () => {
+    const hostLogs: string[] = [];
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostDisplayName: "Private Host raw-token",
+      hostLogger: captureLogger(hostLogs),
+      visibleToHost: true
+    });
+    await startViewer(
+      relay.url(),
+      ["screen:view"],
+      viewerEvents,
+      silentLogger,
+      undefined,
+      "Private Viewer raw-token"
+    );
+
+    const activeState = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    const indicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "active" && event.cause === "activated"
+    );
+
+    expect(indicator).toMatchObject({
+      direction: "indicator",
+      role: "host",
+      state: "active",
+      authorizationId: activeState.type === "session-authorization-state" ? activeState.authorizationId : "",
+      authorizationStatus: "active",
+      visibleToHost: true,
+      permissionCount: 1,
+      cause: "activated"
+    });
+    expect(viewerEvents.some((event) => event.direction === "indicator")).toBe(false);
+
+    const serializedIndicator = JSON.stringify(indicator);
+    const logOutput = hostLogs.join("\n");
+    expect(logOutput).toContain("host indicator state=active");
+    expect(logOutput).toContain("permissionCount=1");
+    expect(serializedIndicator).not.toContain("raw-token");
+    expect(serializedIndicator).not.toContain("123-456");
+    expect(logOutput).not.toContain("raw-token");
+    expect(logOutput).not.toContain("123-456");
+    expect(logOutput).not.toContain("Private Host");
+    expect(logOutput).not.toContain("Private Viewer");
+  });
+
   it("withholds active state when host approves without visible session state", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       visibleToHost: false
     });
@@ -1065,6 +1116,7 @@ describe("agent shell consent workflow", () => {
         (event) => event.direction === "received" && event.message.type === "session-authorization-state"
       )
     ).toBe(false);
+    expect(hostEvents.some((event) => event.direction === "indicator")).toBe(false);
   });
 
   it("sends audit events for approval and visible activation", async () => {
@@ -1267,7 +1319,7 @@ describe("agent shell consent workflow", () => {
   });
 
   it("sends revoked state after host revokes the only granted permission", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       hostRevokeAfterMs: 10,
       hostRevokePermission: "screen:view",
@@ -1331,10 +1383,25 @@ describe("agent shell consent workflow", () => {
     expect(JSON.stringify(revokeAudit)).not.toContain("private revoke reason");
     expect(messageIndex(viewerEvents, revokeControl)).toBeLessThan(messageIndex(viewerEvents, revoked));
     expect(messageIndex(viewerEvents, revoked)).toBeLessThan(messageIndex(viewerEvents, revokedState));
+
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "revoked"
+    );
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationId: revoked.type === "permission-revoked" ? revoked.authorizationId : "",
+      authorizationStatus: "revoked",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "revoked"
+    });
+    expect(JSON.stringify(inactiveIndicator)).not.toContain("private revoke reason");
   });
 
   it("keeps remaining permissions active after host revokes one granted permission", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       hostRevokeAfterMs: 10,
       hostRevokePermission: "screen:view",
@@ -1387,6 +1454,20 @@ describe("agent shell consent workflow", () => {
         remainingPermissionCount: 1,
         finalGrantRevoked: false
       }
+    });
+
+    const indicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.cause === "permission-revoked"
+    );
+    expect(indicator).toMatchObject({
+      direction: "indicator",
+      state: "active",
+      authorizationId: partialState.type === "session-authorization-state" ? partialState.authorizationId : "",
+      authorizationStatus: "active",
+      visibleToHost: true,
+      permissionCount: 1,
+      cause: "permission-revoked"
     });
   });
 
@@ -1457,7 +1538,7 @@ describe("agent shell consent workflow", () => {
   });
 
   it("sends terminated state and audit after host terminates visible session", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       hostTerminateAfterMs: 10,
       hostTerminateReason: "private terminate reason",
@@ -1504,6 +1585,21 @@ describe("agent shell consent workflow", () => {
       }
     });
     expect(JSON.stringify(terminateAudit)).not.toContain("private terminate reason");
+
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "terminated"
+    );
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationId: terminatedState.type === "session-authorization-state" ? terminatedState.authorizationId : "",
+      authorizationStatus: "terminated",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "terminated"
+    });
+    expect(JSON.stringify(inactiveIndicator)).not.toContain("private terminate reason");
   });
 
   it("does not send terminate messages when visible active state is withheld", async () => {
@@ -1610,7 +1706,7 @@ describe("agent shell consent workflow", () => {
   });
 
   it("sends paused state and audit after host pauses visible session", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       hostPauseAfterMs: 10,
       hostPauseReason: "private pause reason",
@@ -1658,10 +1754,25 @@ describe("agent shell consent workflow", () => {
       }
     });
     expect(JSON.stringify(pauseAudit)).not.toContain("private pause reason");
+
+    const indicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "paused" && event.cause === "paused"
+    );
+    expect(indicator).toMatchObject({
+      direction: "indicator",
+      state: "paused",
+      authorizationId: pausedState.type === "session-authorization-state" ? pausedState.authorizationId : "",
+      authorizationStatus: "paused",
+      visibleToHost: true,
+      permissionCount: 2,
+      cause: "paused"
+    });
+    expect(JSON.stringify(indicator)).not.toContain("private pause reason");
   });
 
   it("sends active state and audit after host resumes paused session", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
       hostPauseAfterMs: 10,
       hostResumeAfterMs: 10,
@@ -1716,6 +1827,21 @@ describe("agent shell consent workflow", () => {
       }
     });
     expect(JSON.stringify(resumeAudit)).not.toContain("private resume reason");
+
+    const resumedIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "active" && event.cause === "resumed"
+    );
+    expect(resumedIndicator).toMatchObject({
+      direction: "indicator",
+      state: "active",
+      authorizationId: activeStates.at(-1)?.authorizationId,
+      authorizationStatus: "active",
+      visibleToHost: true,
+      permissionCount: 1,
+      cause: "resumed"
+    });
+    expect(JSON.stringify(resumedIndicator)).not.toContain("private resume reason");
   });
 
   it("persists configured pause and resume lifecycle audit records", async () => {
@@ -2081,7 +2207,7 @@ describe("agent shell consent workflow", () => {
   });
 
   it("sends expired state and audit after authorization ttl elapses", async () => {
-    const { relay, viewerEvents } = await startRelayAndHost({
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       authorizationTtlMs: 10,
       hostDecision: "approve",
       visibleToHost: true
@@ -2116,6 +2242,20 @@ describe("agent shell consent workflow", () => {
         visibleToHost: true,
         expired: true
       }
+    });
+
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "expired"
+    );
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationId: expiredState.type === "session-authorization-state" ? expiredState.authorizationId : "",
+      authorizationStatus: "expired",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "expired"
     });
   });
 
@@ -4180,6 +4320,73 @@ describe("agent shell consent workflow", () => {
     expect(logOutput).not.toContain("payload");
   });
 
+  it("deactivates the host indicator when the host runtime stops", async () => {
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const activeIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "active" && event.cause === "activated"
+    );
+    await host.stop();
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "runtime-stop"
+    );
+
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationId: activeIndicator.authorizationId,
+      authorizationStatus: "active",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "runtime-stop"
+    });
+  });
+
+  it("deactivates the host indicator when the host socket closes", async () => {
+    const socketCloseServer = await startHostSocketCloseAfterActiveServer();
+    const hostEvents: AgentShellEvent[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: socketCloseServer.url,
+        hostDecision: "approve",
+        logger: silentLogger,
+        visibleToHost: true,
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+
+      const activeIndicator = await waitForIndicatorEvent(
+        hostEvents,
+        (event) => event.state === "active" && event.cause === "activated"
+      );
+      const inactiveIndicator = await waitForIndicatorEvent(
+        hostEvents,
+        (event) => event.state === "inactive" && event.cause === "socket-closed"
+      );
+
+      expect(inactiveIndicator).toMatchObject({
+        direction: "indicator",
+        state: "inactive",
+        authorizationId: activeIndicator.authorizationId,
+        authorizationStatus: "active",
+        visibleToHost: false,
+        permissionCount: 0,
+        cause: "socket-closed"
+      });
+    } finally {
+      await host?.stop();
+      await socketCloseServer.stop();
+    }
+  });
+
   it("closes the host connection after visible disconnect simulation", async () => {
     const hostLogs: string[] = [];
     const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
@@ -4201,6 +4408,10 @@ describe("agent shell consent workflow", () => {
       viewerEvents,
       (message) => message.type === "peer-disconnected"
     );
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "local-disconnect"
+    );
     const sentCountAtDisconnect = hostEvents.filter((event) => event.direction === "sent").length;
 
     expect(closed).toMatchObject({
@@ -4214,6 +4425,14 @@ describe("agent shell consent workflow", () => {
       peerId: "host-1",
       role: "host",
       reasonCode: "peer-closed"
+    });
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationStatus: "active",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "local-disconnect"
     });
     expect(hostEvents.some((event) => event.direction === "sent" && event.message.type === "peer-disconnected")).toBe(
       false
@@ -4338,6 +4557,10 @@ describe("agent shell consent workflow", () => {
     );
     await viewer.stop();
     await waitForMessage(hostEvents, (message) => message.type === "peer-disconnected");
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "peer-disconnected"
+    );
     const eventCountAtDisconnect = hostEvents.length;
     await delay(260);
 
@@ -4346,6 +4569,14 @@ describe("agent shell consent workflow", () => {
       .filter((event) => event.direction === "sent");
 
     expect(sentAfterDisconnect).toHaveLength(0);
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationStatus: "active",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "peer-disconnected"
+    });
     expect(hostLogs.join("\n")).toContain("skipped because peer disconnected");
   });
 
@@ -5178,6 +5409,27 @@ function waitForSentMessage(
   );
 }
 
+function waitForIndicatorEvent(
+  events: AgentShellEvent[],
+  predicate: (event: AgentShellHostIndicatorEvent) => boolean
+): Promise<AgentShellHostIndicatorEvent> {
+  return withTimeout(
+    new Promise((resolve) => {
+      const interval = setInterval(() => {
+        const match = events.find(
+          (event): event is AgentShellHostIndicatorEvent =>
+            event.direction === "indicator" && predicate(event)
+        );
+
+        if (match) {
+          clearInterval(interval);
+          resolve(match);
+        }
+      }, 5);
+    })
+  );
+}
+
 function messageIndex(events: AgentShellEvent[], message: AgentShellReceivedProtocolEnvelope): number {
   return events.findIndex((event) => event.direction === "received" && event.message === message);
 }
@@ -5346,6 +5598,70 @@ async function startCloseReasonServer(closeReason: string): Promise<{
     url: `ws://127.0.0.1:${address.port}`,
     stop: () =>
       new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startHostSocketCloseAfterActiveServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "relay-ready",
+        peerId: "host-1",
+        roomSize: 2
+      }));
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "viewer-1",
+        role: "viewer",
+        displayName: "Viewer",
+        capabilities: ["session:visible", "consent:required", "audit:stdout"]
+      }));
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view"],
+        reason: "Development test request"
+      }));
+    });
+
+    socket.on("message", (data) => {
+      const parsed = JSON.parse(data.toString()) as ProtocolEnvelope;
+      if (parsed.type === "session-authorization-state" && parsed.status === "active") {
+        socket.close(1000, "Host socket close test");
+      }
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Host socket close test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        for (const client of wss.clients) {
+          client.close();
+        }
+
         wss.close((error) => {
           if (error) {
             reject(error);
