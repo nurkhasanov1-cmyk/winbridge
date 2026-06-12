@@ -500,6 +500,10 @@ function parseRuntimeRelayUrl(value: unknown): URL {
     throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
   }
 
+  if (relayUrl.searchParams.has("token")) {
+    throw new Error(RUNTIME_RELAY_URL_ERROR_MESSAGE);
+  }
+
   return relayUrl;
 }
 

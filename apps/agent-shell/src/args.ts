@@ -152,6 +152,10 @@ function parseRelayUrl(raw: string): string {
     throw new AgentShellUsageError();
   }
 
+  if (parsed.searchParams.has("token")) {
+    throw new AgentShellUsageError();
+  }
+
   return parsed.toString();
 }
 

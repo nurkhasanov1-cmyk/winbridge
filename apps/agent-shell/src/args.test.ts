@@ -49,6 +49,17 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("rejects relay urls with token query values", () => {
+    for (const relayUrl of [
+      "ws://127.0.0.1:8787/?token=raw-token",
+      "wss://relay.example.test/session?token=raw-token"
+    ]) {
+      expect(() => parseArgs(["viewer", "--relay", relayUrl], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+    }
+  });
+
   it("rejects malformed visible session values", () => {
     expect(() => parseArgs(["host", "--visible-session", "yes"], {}, 42)).toThrow(
       AgentShellUsageError
