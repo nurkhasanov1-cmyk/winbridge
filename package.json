@@ -18,7 +18,7 @@
     "dev:agent": "npm --workspace @winbridge/protocol run build && npm --workspace @winbridge/agent-shell run dev --",
     "dev:relay": "npm --workspace @winbridge/protocol run build && npm --workspace @winbridge/relay run dev",
     "openspec:validate": "npx --yes @fission-ai/openspec@latest validate --all --strict --no-interactive",
-    "test": "vitest run apps/agent-shell/src/runtime.integration.test.ts --pool vmThreads --maxWorkers 1 --minWorkers 1 --no-file-parallelism --reporter dot && node -e \"setTimeout(() => {}, 3000)\" && vitest run --exclude apps/agent-shell/src/runtime.integration.test.ts --pool forks --maxWorkers 1 --minWorkers 1 --no-file-parallelism --reporter dot",
+    "test": "node scripts/run-tests.mjs",
     "verify": "npm run check && npm test && npm run build && npm run openspec:validate"
   },
   "devDependencies": {

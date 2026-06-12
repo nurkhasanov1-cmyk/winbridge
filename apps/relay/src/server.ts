@@ -43,7 +43,7 @@ const RELAY_MESSAGE_TOO_LARGE_REASON = `Relay message exceeds ${MAX_RELAY_MESSAG
 const GENERIC_RELAY_REJECTION_REASON = "Invalid relay message";
 const RELAY_TOKEN_NOT_CONFIGURED_CLOSE_REASON = "Relay token is not configured";
 const RELAY_SHARED_TOKEN_ERROR_MESSAGE =
-  "WINBRIDGE_RELAY_SHARED_TOKEN must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
+  "WINBRIDGE_RELAY_SHARED_TOKEN must be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
 const SAFE_RELAY_REJECTION_REASONS = new Set([
   GENERIC_RELAY_REJECTION_REASON,
   RELAY_MESSAGE_TOO_LARGE_REASON,
@@ -741,6 +741,7 @@ function normalizeRelaySharedToken(sharedToken: unknown): string | undefined {
   if (
     typeof sharedToken !== "string" ||
     sharedToken.trim().length === 0 ||
+    sharedToken !== sharedToken.trim() ||
     Buffer.byteLength(sharedToken, "utf8") > MAX_RELAY_SHARED_TOKEN_BYTES ||
     hasAsciiControlCharacter(sharedToken)
   ) {

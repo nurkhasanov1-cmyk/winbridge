@@ -135,15 +135,19 @@ The relay runtime SHALL allow tests to inject audit sinks and inspect security-r
 - **AND** the peer-facing close reason MUST be bounded and MUST NOT include the raw presented token, credentials, pairing codes, protocol payloads, private reasons, keystrokes, screenshots, or screen contents
 
 ### Requirement: Testable shared-token configuration
-The managed relay runtime SHALL reject malformed development shared-token configuration before creating a listener, opening a listening socket, or accepting peer connections.
+The managed relay runtime SHALL reject malformed development shared-token configuration before creating a listener, opening a listening socket, or accepting peer connections. Malformed shared-token configuration MUST include non-string, blank, whitespace-only, untrimmed, control-character, or oversized values.
 
 #### Scenario: Runtime shared token configuration is malformed
-- **WHEN** tests create the relay runtime with non-string, blank, control-character, or oversized shared-token configuration
+- **WHEN** tests create the relay runtime with non-string, blank, untrimmed, control-character, or oversized shared-token configuration
 - **THEN** the runtime rejects configuration before accepting peer connections
 
 #### Scenario: Environment shared token configuration is malformed
-- **WHEN** the relay shared-token environment value is blank, control-character, or oversized
+- **WHEN** the relay shared-token environment value is blank, untrimmed, control-character, or oversized
 - **THEN** relay shared-token config parsing rejects the value before accepting peer connections
+
+#### Scenario: Shared-token config rejection does not leak secrets
+- **WHEN** relay shared-token configuration is rejected
+- **THEN** thrown errors, startup diagnostics, audit records, and logs MUST NOT expose the raw shared token, token whitespace shape, pairing codes, credentials, protocol payloads, keystrokes, screenshots, screen contents, or full secrets
 
 ### Requirement: Testable heartbeat configuration
 The managed relay runtime SHALL allow callers to inject relay heartbeat settings or disable heartbeat timers for tests, and SHALL reject unsafe injected heartbeat timer values before starting peer heartbeat timers.

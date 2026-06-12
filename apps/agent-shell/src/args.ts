@@ -308,6 +308,7 @@ function parseOptionalToken(raw: string | undefined): string | undefined {
 
   if (
     raw.trim().length === 0 ||
+    raw !== raw.trim() ||
     Buffer.byteLength(raw, "utf8") > MAX_AGENT_SHELL_TOKEN_BYTES ||
     hasAsciiControlCharacter(raw)
   ) {

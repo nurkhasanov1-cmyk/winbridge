@@ -2025,6 +2025,32 @@ describe("relay runtime integration", () => {
     });
   });
 
+  it("rejects padded presented shared tokens without logging raw tokens", async () => {
+    const auditSink = new MemoryAuditSink();
+    const configuredToken = "correct-token configured-token-marker";
+    const presentedToken = ` ${configuredToken} `;
+    const runtime = await startRuntime({ auditSink, sharedToken: configuredToken });
+    const socket = await openSocket(`${runtime.url()}?token=${encodeURIComponent(presentedToken)}`);
+
+    expect(await waitForClose(socket)).toEqual({
+      code: 1008,
+      reason: "Invalid relay token"
+    });
+
+    const denied = auditSink.records().find((record) => record.action === "relay.token.denied");
+    expect(denied).toBeDefined();
+    expect(denied?.detail).toMatchObject({
+      accessPresented: true,
+      accessConfigured: true
+    });
+    expect(JSON.stringify(denied)).not.toContain(configuredToken);
+    expect(JSON.stringify(denied)).not.toContain(presentedToken);
+    expect(JSON.stringify(denied)).not.toContain("configured-token-marker");
+    expect(auditSink.records().some((record) => record.action === "relay.peer.join.accepted")).toBe(
+      false
+    );
+  });
+
   it("rate-limits repeated invalid shared-token attempts without logging raw tokens", async () => {
     const auditSink = new MemoryAuditSink();
     const configuredToken = "correct-token configured-token-marker";
@@ -2115,15 +2141,12 @@ describe("relay runtime integration", () => {
       createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: "correct-token" })
     ).toBe("correct-token");
     expect(
-      createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: "  padded-token  " })
-    ).toBe("  padded-token  ");
-    expect(
       createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: "x".repeat(1024) })
     ).toBe("x".repeat(1024));
   });
 
   it("rejects malformed development shared-token configuration", () => {
-    for (const token of ["", "   ", "dev\ntoken", "x".repeat(1025)]) {
+    for (const token of ["", "   ", " padded-token", "padded-token ", "dev\ntoken", "x".repeat(1025)]) {
       expect(() =>
         createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: token })
       ).toThrow("WINBRIDGE_RELAY_SHARED_TOKEN");
@@ -2136,6 +2159,23 @@ describe("relay runtime integration", () => {
       expect(() =>
         createRelayRuntime({ port: 0, sharedToken: token as unknown as string })
       ).toThrow("WINBRIDGE_RELAY_SHARED_TOKEN");
+    }
+  });
+
+  it("rejects untrimmed shared-token configuration without exposing raw token text", () => {
+    const token = " relay-secret-token-marker ";
+
+    expect(() =>
+      createRelaySharedTokenConfig({ WINBRIDGE_RELAY_SHARED_TOKEN: token })
+    ).toThrow("WINBRIDGE_RELAY_SHARED_TOKEN");
+
+    try {
+      createRelayRuntime({ port: 0, sharedToken: token });
+      throw new Error("Expected untrimmed shared token to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).not.toContain("relay-secret-token-marker");
+      expect((error as Error).message).not.toContain(token);
     }
   });
 

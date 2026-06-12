@@ -86,6 +86,7 @@ describe("agent shell consent workflow", () => {
       ["blank display name", { displayName: "   " }, "Runtime display name"],
       ["untrimmed display name", { displayName: " Host" }, "Runtime display name"],
       ["blank token", { token: "   " }, "Runtime token"],
+      ["untrimmed token", { token: " relay-token " }, "Runtime token"],
       ["non-string token", { token: null as unknown as string }, "Runtime token"],
       ["control-character token", { token: "dev\ntoken" }, "Runtime token"],
       ["oversized token", { token: "x".repeat(1025) }, "Runtime token"],
@@ -137,6 +138,23 @@ describe("agent shell consent workflow", () => {
         () => createAgentShellRuntime(createRuntimeOptions(overrides)),
         name
       ).toThrow(expectedMessage);
+    }
+  });
+
+  it("rejects untrimmed runtime tokens without exposing raw token text", () => {
+    const token = " runtime-token-private-marker ";
+
+    try {
+      createAgentShellRuntime(createRuntimeOptions({
+        token,
+        logger: silentLogger
+      }));
+      throw new Error("Expected untrimmed runtime token to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("Runtime token");
+      expect((error as Error).message).not.toContain("runtime-token-private-marker");
+      expect((error as Error).message).not.toContain(token);
     }
   });
 
@@ -5373,6 +5391,7 @@ describe("agent shell consent workflow", () => {
       const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost();
       await startViewer(relay.url(), [], viewerEvents);
       await waitForMessage(hostEvents, (message) => message.type === "hello");
+      await waitForMessage(viewerEvents, (message) => message.type === "hello");
 
       const sentCountBefore = hostEvents.filter((event) => event.direction === "sent").length;
       const viewerReceivedHelloCountBefore = viewerEvents.filter(
@@ -5408,6 +5427,7 @@ describe("agent shell consent workflow", () => {
     const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost();
     await startViewer(relay.url(), [], viewerEvents);
     await waitForMessage(hostEvents, (message) => message.type === "hello");
+    await waitForMessage(viewerEvents, (message) => message.type === "hello");
 
     const privateMarker = "Host Private Display";
     const sentCountBefore = hostEvents.filter((event) => event.direction === "sent").length;

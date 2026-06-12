@@ -69,7 +69,7 @@ Provides a development WebSocket relay:
 - Accepts host/viewer peers.
 - Requires session id, peer id, role, and pairing credential.
 - Creates a salted hashed expiring pairing ticket when the host joins, then requires the viewer to consume that ticket before room registration.
-- Optionally enforces a shared development token by requiring exactly one matching `token` query parameter before room registration; when no shared token is configured, token-bearing client URLs are rejected before room registration instead of being silently accepted.
+- Optionally enforces a non-blank, already trimmed, bounded shared development token by requiring exactly one matching `token` query parameter before room registration; when no shared token is configured, token-bearing client URLs are rejected before room registration instead of being silently accepted.
 - Limits a room to one host and one viewer.
 - Treats live peer ids as exclusive within a session room; duplicate joins for an already registered peer id are rejected before replacing the peer send path or mutating pairing-ticket state. The same peer id can join again only after normal disconnect cleanup removes the previous peer.
 - Validates protocol envelopes before forwarding.
@@ -113,8 +113,8 @@ The shell has a managed runtime shared by CLI and tests. Development consent wor
 - Inbound `hello` messages whose peer id matches the local runtime peer are ignored before local received-event emission or presence workflow handling.
 - Inbound protocol messages whose session id does not match the local runtime session are ignored before local received-event emission or consent workflow handling.
 - Inbound authorization requests that identify the local host peer as the viewer are ignored before local received-event emission or consent workflow handling.
-- CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded credentials or `token` query values, malformed protocol identifier, malformed permission, malformed pairing, blank, untrimmed, or oversized lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
-- The managed runtime also rejects malformed direct options before relay startup, including non-WebSocket relay URLs, relay URLs with embedded credentials or `token` query values, malformed identifiers, malformed tokens, duplicate or invalid permissions, non-boolean visible-session flags, unsafe workflow timers, and blank, untrimmed, or oversized decision/lifecycle reasons. Relay shared tokens use the dedicated `--token`/runtime token path and are bounded before connection setup.
+- CLI argument parsing rejects unknown, duplicate, missing-value, malformed relay URL, relay URLs with embedded credentials or `token` query values, malformed protocol identifier, malformed permission, malformed pairing, blank, untrimmed, control-character, or oversized token, blank, untrimmed, or oversized lifecycle reason, and non-`true`/`false` visible-session values before runtime start.
+- The managed runtime also rejects malformed direct options before relay startup, including non-WebSocket relay URLs, relay URLs with embedded credentials or `token` query values, malformed identifiers, blank, untrimmed, control-character, non-string, or oversized tokens, duplicate or invalid permissions, non-boolean visible-session flags, unsafe workflow timers, and blank, untrimmed, or oversized decision/lifecycle reasons. Relay shared tokens use the dedicated `--token`/runtime token path and are bounded before connection setup.
 - Host mode can simulate permission revocation only after explicit visible approval with `--revoke-after-ms` and `--revoke-permission`.
 - Host mode can simulate session termination only after explicit visible approval with `--terminate-after-ms`.
 - Host mode can simulate authorization expiration after visible activation with `--authorization-ttl-ms`.

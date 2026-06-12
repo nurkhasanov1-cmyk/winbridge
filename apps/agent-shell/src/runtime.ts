@@ -149,7 +149,7 @@ const RUNTIME_RELAY_URL_ERROR_MESSAGE = "Runtime relay URL must be an absolute w
 const RUNTIME_REVOKE_PERMISSION_ERROR_MESSAGE = "Runtime revoke permission must be valid";
 const RUNTIME_ROLE_ERROR_MESSAGE = "Runtime role must be host or viewer";
 const RUNTIME_TOKEN_ERROR_MESSAGE =
-  "Runtime token must be non-blank, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
+  "Runtime token must be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
 const RUNTIME_VISIBLE_SESSION_ERROR_MESSAGE = "Runtime visibleToHost must be a boolean when provided";
 const RUNTIME_WORKFLOW_REASON_ERROR_MESSAGE =
   "Runtime workflow reasons must be non-blank, already trimmed, and 240 characters or less";
@@ -1368,6 +1368,7 @@ function assertRuntimeToken(value: unknown): asserts value is string | undefined
   if (
     typeof value !== "string" ||
     value.trim().length === 0 ||
+    value !== value.trim() ||
     Buffer.byteLength(value, "utf8") > MAX_AGENT_SHELL_TOKEN_BYTES ||
     hasAsciiControlCharacter(value)
   ) {

@@ -195,19 +195,29 @@ describe("agent shell arguments", () => {
   it("parses optional relay tokens", () => {
     expect(parseArgs(["host"], {}, 42).token).toBeUndefined();
     expect(parseArgs(["host", "--token", "dev-token"], {}, 42).token).toBe("dev-token");
-    expect(parseArgs(["host", "--token", "  dev-token  "], {}, 42).token).toBe(
-      "  dev-token  "
-    );
     expect(parseArgs(["host", "--token", "x".repeat(1024)], {}, 42).token).toBe(
       "x".repeat(1024)
     );
   });
 
   it("rejects malformed relay tokens", () => {
-    for (const token of ["", "   ", "dev\ntoken", "x".repeat(1025)]) {
+    for (const token of ["", "   ", " dev-token", "dev-token ", "dev\ntoken", "x".repeat(1025)]) {
       expect(() => parseArgs(["host", "--token", token], {}, 42)).toThrow(
         AgentShellUsageError
       );
+    }
+  });
+
+  it("rejects untrimmed relay tokens without exposing raw token text", () => {
+    const token = " agent-token-private-marker ";
+
+    try {
+      parseArgs(["host", "--token", token], {}, 42);
+      throw new Error("Expected untrimmed relay token to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AgentShellUsageError);
+      expect((error as Error).message).not.toContain("agent-token-private-marker");
+      expect((error as Error).message).not.toContain(token);
     }
   });
 
