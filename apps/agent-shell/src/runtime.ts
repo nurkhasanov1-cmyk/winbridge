@@ -335,6 +335,11 @@ function handleMessage(
     return;
   }
 
+  if (isSameRoleHelloMessage(envelope, options)) {
+    reportIgnoredUnsafeProtocolMessage(text, options);
+    return;
+  }
+
   if (isMisdirectedSignal(envelope, options)) {
     reportIgnoredUnsafeProtocolMessage(text, options);
     return;
@@ -419,6 +424,13 @@ function isSelfHelloMessage(
   options: AgentShellRuntimeOptions
 ): boolean {
   return envelope.type === "hello" && envelope.peerId === options.peerId;
+}
+
+function isSameRoleHelloMessage(
+  envelope: ProtocolEnvelope,
+  options: AgentShellRuntimeOptions
+): boolean {
+  return envelope.type === "hello" && envelope.role === options.role;
 }
 
 function isMisdirectedSignal(

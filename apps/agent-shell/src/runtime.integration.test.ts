@@ -283,6 +283,72 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("ignores same-role hello messages before presence handling", async () => {
+    const sameRoleHelloServer = await startSameRoleHelloServer();
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = createAgentShellRuntime(createRuntimeOptions({
+        role: "viewer",
+        relayUrl: sameRoleHelloServer.url,
+        peerId: "viewer-1",
+        displayName: "Viewer",
+        deviceId: "dev_viewer_1",
+        logger: captureLogger(viewerLogs),
+        onEvent: (event) => viewerEvents.push(event)
+      }));
+      await viewer.start();
+
+      const rawEvent = await waitForRawEvent(viewerEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(rawEvent.byteLength).toBeGreaterThan(0);
+      expect(viewerEvents.some((event) => event.direction === "received")).toBe(false);
+      expect(
+        viewerEvents.some((event) => event.direction === "sent" && event.message.type === "hello")
+      ).toBe(false);
+
+      const sentCountBefore = viewerEvents.filter((event) => event.direction === "sent").length;
+      const privateRequestMarker = "same-role-public-request-private-reason";
+      expect(() =>
+        viewer.send({
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-request",
+          viewerPeerId: "viewer-1",
+          requestedPermissions: ["screen:view"],
+          reason: privateRequestMarker
+        })
+      ).toThrow("Agent shell public send requires an observed recipient peer");
+      expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountBefore);
+
+      const serializedRawEvents = JSON.stringify(viewerEvents.filter((event) => event.direction === "raw"));
+      const logOutput = viewerLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("hello");
+      expect(logOutput).not.toContain("viewer-2");
+      expect(logOutput).not.toContain("session-demo");
+      expect(logOutput).not.toContain("same-role hello display");
+      expect(logOutput).not.toContain("same-role:private-capability");
+      expect(logOutput).not.toContain(privateRequestMarker);
+      expect(serializedRawEvents).not.toContain("hello");
+      expect(serializedRawEvents).not.toContain("viewer-2");
+      expect(serializedRawEvents).not.toContain("session-demo");
+      expect(serializedRawEvents).not.toContain("same-role hello display");
+      expect(serializedRawEvents).not.toContain("same-role:private-capability");
+      expect(JSON.stringify(viewerEvents)).not.toContain(privateRequestMarker);
+    } finally {
+      await viewer?.stop();
+      await sameRoleHelloServer.stop();
+    }
+  });
+
   it("allows host signal sends after active visible authorization and redacts payload contents", async () => {
     const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
@@ -4716,6 +4782,46 @@ async function startSelfHelloServer(): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Self-hello test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startSameRoleHelloServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  wss.on("connection", (socket) => {
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "viewer-2",
+        role: "viewer",
+        displayName: "same-role hello display",
+        capabilities: ["same-role:private-capability"]
+      }));
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Same-role hello test server did not expose a TCP port");
   }
 
   return {

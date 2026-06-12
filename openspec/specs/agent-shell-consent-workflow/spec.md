@@ -4,7 +4,7 @@
 Defines the non-native agent shell workflow for exercising consent, visible activation, and revocation protocol behavior without implementing remote actions.
 ## Requirements
 ### Requirement: Managed agent shell lifecycle
-The agent shell SHALL expose a managed runtime with explicit start and stop operations for tests and CLI use. It SHALL send `join-session` when the socket opens. It SHALL send `hello` only after the relay indicates a two-peer room or after receiving a peer `hello`, and MUST NOT send `hello` before a relay recipient is available.
+The agent shell SHALL expose a managed runtime with explicit start and stop operations for tests and CLI use. It SHALL send `join-session` when the socket opens. It SHALL send `hello` only after the relay indicates a two-peer room or after receiving an accepted opposite-role peer `hello`, and MUST NOT send `hello` before a relay recipient is available.
 
 #### Scenario: Agent shell starts
 - **WHEN** the agent shell runtime starts
@@ -19,7 +19,7 @@ The agent shell SHALL expose a managed runtime with explicit start and stop oper
 - **THEN** the shell MUST NOT send `hello`
 
 #### Scenario: Hello sent when room is paired
-- **WHEN** the relay returns `relay-ready` with room size 2 or the shell receives a peer `hello`
+- **WHEN** the relay returns `relay-ready` with room size 2 or the shell receives an accepted opposite-role peer `hello`
 - **THEN** it sends exactly one `hello` for its local peer before later workflow messages that depend on peer presence
 - **AND** sending `hello` MUST NOT approve authorization, activate a visible session, grant permissions, start capture, send input, reconnect a peer, suppress host visibility, or bypass consent workflows
 
@@ -35,6 +35,24 @@ The agent shell SHALL ignore decoded inbound `hello` messages whose `peerId` equ
 - **WHEN** the shell ignores a decoded `hello` message that identifies the local peer
 - **THEN** local events and logs expose only redacted summary metadata such as byte length
 - **AND** they MUST NOT expose raw protocol payloads, session ids, peer ids, display names, capability strings, tokens, pairing codes, private reasons, signal payloads, keystrokes, screenshots, screen contents, or input contents
+
+### Requirement: Inbound same-role hello boundary
+The agent shell SHALL ignore decoded inbound `hello` messages whose `role` equals the local runtime role before emitting local `received` protocol events, recording recipient availability, or running peer presence workflow handling.
+
+#### Scenario: Same-role hello is ignored
+- **WHEN** a viewer shell receives a decoded `hello` message with role `viewer` from a different peer id in the same session
+- **THEN** the shell MUST NOT send a local `hello` because of that message
+- **AND** the shell MUST NOT emit a local `received` protocol event for that ignored message
+- **AND** the shell MUST NOT treat that message as recipient availability for public runtime `send()`
+
+#### Scenario: Opposite-role hello remains valid presence
+- **WHEN** a host shell receives a decoded `hello` message with role `viewer` from a different peer id in the same session
+- **THEN** the shell MAY treat that message as peer presence and send exactly one local `hello`
+
+#### Scenario: Ignored same-role hello input remains secret-safe
+- **WHEN** the shell ignores a decoded `hello` message that declares the local runtime role
+- **THEN** local events and logs expose only redacted summary metadata such as byte length
+- **AND** they MUST NOT expose raw protocol payloads, session ids, peer ids, roles, display names, capability strings, tokens, pairing codes, private reasons, signal payloads, keystrokes, screenshots, screen contents, or input contents
 
 ### Requirement: Inbound relay-ready peer boundary
 The agent shell SHALL ignore decoded inbound `relay-ready` messages whose `peerId` does not match the local runtime peer before emitting local `received` protocol events or using room metadata for presence or authorization request workflow handling.
@@ -158,7 +176,7 @@ The agent shell SHALL reject public managed runtime `send()` calls before socket
 - **THEN** thrown errors, runtime events, and logs MUST NOT expose raw protocol payloads, message types, session ids, peer ids, roles, display names, permission scopes, signal payloads, tokens, pairing codes, private reasons, keystrokes, screenshots, screen contents, or input contents
 
 ### Requirement: Public send recipient binding
-The agent shell SHALL reject public managed runtime `send()` calls for peer-directed protocol messages before socket write and before local `sent` event emission until the runtime has observed a recipient peer through an accepted paired `relay-ready` message or an accepted inbound peer `hello`. Recipient availability SHALL be connection-scoped and SHALL be cleared after a trusted remote peer disconnect notice.
+The agent shell SHALL reject public managed runtime `send()` calls for peer-directed protocol messages before socket write and before local `sent` event emission until the runtime has observed a recipient peer through an accepted paired `relay-ready` message or an accepted inbound opposite-role peer `hello`. Recipient availability SHALL be connection-scoped and SHALL be cleared after a trusted remote peer disconnect notice.
 
 #### Scenario: Public hello waits for recipient
 - **WHEN** caller code invokes public runtime `send()` with a same-session `hello` whose peer id and role match the local runtime
