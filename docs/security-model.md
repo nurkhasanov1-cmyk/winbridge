@@ -49,7 +49,7 @@ Unexpected relay CLI startup/shutdown errors are metadata-only and expose generi
 
 Remote actions still require an explicit host-approved active session grant.
 
-Protocol display-name metadata in local device identity, `hello`, and legacy host consent request messages must be non-blank before components use it as peer or consent UI metadata. These local display names are usability metadata only and are not production account authentication.
+Protocol display-name metadata in local device identity, `hello`, and legacy host consent request messages must be non-blank and already trimmed before components use it as peer or consent UI metadata. These local display names are usability metadata only and are not production account authentication.
 
 ## Session Authorization Lifecycle
 
@@ -102,8 +102,8 @@ The non-native agent shell can simulate consent messages for development:
 - Inbound `hello` messages that identify the local runtime peer are ignored before local `received` protocol events or presence workflow handling; ignored self-hello input is logged only as redacted summary metadata.
 - Inbound protocol messages for any session other than the local runtime session are ignored before local `received` protocol events or consent workflow handling; ignored cross-session input is logged only as redacted summary metadata.
 - Inbound authorization requests that identify the local host peer as the viewer are ignored before local `received` protocol events or consent workflow handling; ignored self-authority input is logged only as redacted summary metadata.
-- CLI parsing rejects unknown, duplicate option, duplicate requested permission, missing-value, malformed token, relay URLs with embedded credentials or `token` query values, malformed relay URL, malformed protocol identifier, malformed display name, malformed permission, malformed pairing, malformed lifecycle reason, and non-`true`/`false` `--visible-session` values before starting the runtime.
-- The managed runtime rejects malformed direct options for relay URL, relay URLs with embedded credentials or `token` query values, identifiers, display name, token, requested permissions, revoke permission, visible-session flag, host decision, workflow timers, and decision/lifecycle reasons before opening a relay connection or sending any authorization decision. Relay shared tokens must use the dedicated `--token`/runtime token path and are bounded before connection setup.
+- CLI parsing rejects unknown, duplicate option, duplicate requested permission, missing-value, malformed token, relay URLs with embedded credentials or `token` query values, malformed relay URL, malformed protocol identifier, blank, untrimmed, or oversized display name, malformed permission, malformed pairing, malformed lifecycle reason, and non-`true`/`false` `--visible-session` values before starting the runtime.
+- The managed runtime rejects malformed direct options for relay URL, relay URLs with embedded credentials or `token` query values, identifiers, blank, untrimmed, or oversized display name, token, requested permissions, revoke permission, visible-session flag, host decision, workflow timers, and decision/lifecycle reasons before opening a relay connection or sending any authorization decision. Relay shared tokens must use the dedicated `--token`/runtime token path and are bounded before connection setup.
 - Authorization expiration simulation uses `--authorization-ttl-ms` and only runs after visible activation.
 - Pause/resume simulation requires explicit visible approval plus `--pause-after-ms` and optional `--resume-after-ms`.
 - Permission revocation simulation requires explicit visible approval plus `--revoke-after-ms` and `--revoke-permission`; it sends a bound revoke-permission `session-control` before `permission-revoked`, follow-up authorization state, and audit messages.

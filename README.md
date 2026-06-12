@@ -129,7 +129,7 @@ npm run dev:agent -- host --session demo --pairing 123-456
 npm run dev:agent -- viewer --session demo --pairing 123-456
 ```
 
-Optional `--name` display values must be non-blank and at most 120 characters.
+Optional `--name` display values must be non-blank, already trimmed, and at most 120 characters.
 
 Exercise the development consent workflow:
 
