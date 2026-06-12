@@ -47,6 +47,11 @@ const ProtocolReasonSchema = z
   .min(1)
   .max(240)
   .refine((reason) => reason.trim().length > 0, "Reason must not be blank");
+const ProtocolAuditActionSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .refine((action) => action.trim().length > 0, "Audit event action must not be blank");
 
 export const HelloMessageSchema = BaseMessageSchema.extend({
   type: z.literal("hello"),
@@ -303,7 +308,7 @@ export const AuditEventMessageSchema = BaseMessageSchema.extend({
   type: z.literal("audit-event"),
   eventId: ProtocolIdentifierSchema,
   actorPeerId: PeerIdSchema,
-  action: z.string().min(1).max(120),
+  action: ProtocolAuditActionSchema,
   outcome: AuditOutcomeSchema,
   detail: z.record(z.unknown()).default({}).transform(redactAuditDetail)
 });

@@ -25,6 +25,35 @@ describe("audit records", () => {
     ).toThrow();
   });
 
+  it("rejects blank audit metadata fields", () => {
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "   ",
+        outcome: "failed"
+      })
+    ).toThrow("Audit action must not be blank");
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.rejected",
+        outcome: "failed",
+        reason: "   "
+      })
+    ).toThrow("Audit reason must not be blank");
+    expect(() =>
+      createAuditRecord({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "relay.message.forwarded",
+        outcome: "accepted",
+        target: {
+          type: "   ",
+          id: "viewer-1"
+        }
+      })
+    ).toThrow("Audit target type must not be blank");
+  });
+
   it("rejects audit records with malformed identifiers", () => {
     expect(() =>
       createAuditRecord({

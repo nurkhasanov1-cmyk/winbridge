@@ -12,20 +12,36 @@ export const AuditActorSchema = z.object({
 });
 export type AuditActor = z.infer<typeof AuditActorSchema>;
 
+const AuditActionSchema = z
+  .string()
+  .min(1)
+  .max(160)
+  .refine((action) => action.trim().length > 0, "Audit action must not be blank");
+const AuditReasonSchema = z
+  .string()
+  .min(1)
+  .max(240)
+  .refine((reason) => reason.trim().length > 0, "Audit reason must not be blank");
+const AuditTargetTypeSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .refine((type) => type.trim().length > 0, "Audit target type must not be blank");
+
 export const AuditRecordSchema = z.object({
   eventId: ProtocolIdentifierSchema.min(8),
   timestamp: z.string().datetime(),
   actor: AuditActorSchema,
-  action: z.string().min(1).max(160),
+  action: AuditActionSchema,
   outcome: AuditOutcomeSchema,
   sessionId: SessionIdSchema.optional(),
   target: z
     .object({
-      type: z.string().min(1).max(80),
+      type: AuditTargetTypeSchema,
       id: ProtocolIdentifierSchema
     })
     .optional(),
-  reason: z.string().min(1).max(240).optional(),
+  reason: AuditReasonSchema.optional(),
   detail: z.record(z.unknown()).default({})
 });
 export type AuditRecord = z.infer<typeof AuditRecordSchema>;

@@ -1085,6 +1085,19 @@ describe("protocol envelopes", () => {
       detail: {}
     });
   });
+
+  it("rejects blank audit-event actions", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit-demo",
+        actorPeerId: "host-1",
+        action: "   ",
+        outcome: "failed"
+      })
+    ).toThrow("Audit event action must not be blank");
+  });
 });
 
 describe("session grants", () => {
