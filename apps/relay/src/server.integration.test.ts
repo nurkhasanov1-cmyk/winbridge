@@ -76,14 +76,14 @@ describe("relay runtime integration", () => {
         type: "signal",
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
-        payload: { kind: "test-signal" }
+        payload: { authorizationId: "authz-demo", kind: "test-signal" }
       })
     );
 
     expect(await waitForProtocolMessage(viewer, (message) => message.type === "signal")).toMatchObject({
       type: "signal",
       fromPeerId: "host-1",
-      payload: { kind: "test-signal" }
+      payload: { authorizationId: "authz-demo", kind: "test-signal" }
     });
 
     const auditRecords = auditSink.records().filter(
@@ -134,14 +134,14 @@ describe("relay runtime integration", () => {
         type: "signal",
         fromPeerId: "viewer-1",
         toPeerId: "host-1",
-        payload: { kind: "original-host-continuity" }
+        payload: { authorizationId: "authz-demo", kind: "original-host-continuity" }
       })
     );
 
     expect(await waitForProtocolMessage(host, (message) => message.type === "signal")).toMatchObject({
       type: "signal",
       fromPeerId: "viewer-1",
-      payload: { kind: "original-host-continuity" }
+      payload: { authorizationId: "authz-demo", kind: "original-host-continuity" }
     });
     await expectNoProtocolMessage(duplicateHost, (message) => message.type === "signal");
   });
@@ -180,14 +180,14 @@ describe("relay runtime integration", () => {
         type: "signal",
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
-        payload: { kind: "original-viewer-continuity" }
+        payload: { authorizationId: "authz-demo", kind: "original-viewer-continuity" }
       })
     );
 
     expect(await waitForProtocolMessage(viewer, (message) => message.type === "signal")).toMatchObject({
       type: "signal",
       fromPeerId: "host-1",
-      payload: { kind: "original-viewer-continuity" }
+      payload: { authorizationId: "authz-demo", kind: "original-viewer-continuity" }
     });
     await expectNoProtocolMessage(duplicateViewer, (message) => message.type === "signal");
   });
@@ -319,6 +319,69 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("raw-diagnostic-dump");
   });
 
+  it("rejects signal payloads without valid authorization ids before forwarding", async () => {
+    const cases: Array<{
+      name: string;
+      payload: Record<string, unknown>;
+      privateMarker: string;
+    }> = [
+      {
+        name: "missing authorization id",
+        payload: {
+          kind: "offer",
+          safeMarker: "missing-signal-auth-id-private-marker"
+        },
+        privateMarker: "missing-signal-auth-id-private-marker"
+      },
+      {
+        name: "malformed authorization id",
+        payload: {
+          authorizationId: "authz/unsafe",
+          kind: "offer",
+          safeMarker: "malformed-signal-auth-id-private-marker"
+        },
+        privateMarker: "malformed-signal-auth-id-private-marker"
+      }
+    ];
+
+    for (const { name, payload, privateMarker } of cases) {
+      const auditSink = new MemoryAuditSink();
+      const runtime = await startRuntime({ auditSink });
+      const { host, viewer } = await joinPairedSession(runtime);
+
+      host.send(
+        JSON.stringify({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload
+        })
+      );
+
+      expect(await waitForJsonMessage(host, (message) => message.type === "relay-error"), name).toEqual({
+        type: "relay-error",
+        reason: "Invalid relay message"
+      });
+      await expectNoProtocolMessage(viewer, (message) => message.type === "signal");
+
+      const rejected = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+      );
+      expect(rejected, name).toMatchObject({
+        action: "relay.message.rejected",
+        outcome: "failed",
+        sessionId: "session-demo",
+        detail: {
+          registered: true
+        }
+      });
+      expect(JSON.stringify(rejected), name).not.toContain(privateMarker);
+      expect(JSON.stringify(rejected), name).not.toContain("authz/unsafe");
+    }
+  });
+
   it("rejects oversized relay messages before forwarding", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
@@ -329,6 +392,7 @@ describe("relay runtime integration", () => {
       fromPeerId: "host-1",
       toPeerId: "viewer-1",
       payload: {
+        authorizationId: "authz-demo",
         kind: "oversized-offer-marker",
         sdp: "x".repeat(70 * 1024)
       }
@@ -700,6 +764,7 @@ describe("relay runtime integration", () => {
         fromPeerId: "viewer-1",
         toPeerId: "host-1",
         payload: {
+          authorizationId: "authz-demo",
           kind: "spoof-marker"
         }
       })
@@ -1037,6 +1102,7 @@ describe("relay runtime integration", () => {
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
         payload: {
+          authorizationId: "authz-demo",
           kind: "missing-recipient-private-marker"
         }
       })
@@ -1082,6 +1148,7 @@ describe("relay runtime integration", () => {
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
         payload: {
+          authorizationId: "authz-demo",
           kind: "departed-recipient-private-marker"
         }
       })
@@ -1129,6 +1196,7 @@ describe("relay runtime integration", () => {
           fromPeerId: "host-1",
           toPeerId,
           payload: {
+            authorizationId: "authz-demo",
             kind: `wrong-target-private-marker-${toPeerId}`
           }
         })

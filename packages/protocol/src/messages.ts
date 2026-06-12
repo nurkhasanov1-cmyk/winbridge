@@ -265,6 +265,24 @@ export const SignalMessageSchema = BaseMessageSchema.extend({
   toPeerId: PeerIdSchema.optional(),
   payload: z.record(z.unknown())
 }).superRefine((message, context) => {
+  const authorizationId = message.payload.authorizationId;
+  if (typeof authorizationId !== "string") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Signal payload requires authorizationId",
+      path: ["payload", "authorizationId"]
+    });
+  } else {
+    const parsedAuthorizationId = ProtocolIdentifierSchema.min(8).safeParse(authorizationId);
+    if (!parsedAuthorizationId.success) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Signal payload authorizationId must be a valid protocol identifier",
+        path: ["payload", "authorizationId"]
+      });
+    }
+  }
+
   if (Object.keys(message.payload).length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

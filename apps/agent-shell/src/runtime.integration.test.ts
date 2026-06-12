@@ -4208,7 +4208,7 @@ describe("agent shell consent workflow", () => {
 
     try {
       const blockedPayloadMarker = "host-blocked-before-active-payload";
-      sendRawViewerSignal(rawViewer, blockedPayloadMarker);
+      sendRawViewerSignal(rawViewer, blockedPayloadMarker, "authz_before_active");
 
       const rawEvent = await waitForRawEvent(hostEvents);
       await delay(100);
@@ -4281,11 +4281,20 @@ describe("agent shell consent workflow", () => {
         (event) => event.direction === "received" && event.message.type === "signal"
       ).length;
 
+      const relayErrorPromise = waitForRawSocketJsonMessage(
+        rawViewer,
+        (message) => message.type === "relay-error"
+      );
       sendRawViewerSignal(rawViewer, "host-missing-inbound-signal-auth-id");
+      const relayError = await relayErrorPromise;
       sendRawViewerSignal(rawViewer, "host-mismatch-inbound-signal-auth-id", "authz_other_signal");
-      await waitForRawEventCount(hostEvents, rawCountBefore + 2);
+      await waitForRawEventCount(hostEvents, rawCountBefore + 1);
       await delay(100);
 
+      expect(relayError).toEqual({
+        type: "relay-error",
+        reason: "Invalid relay message"
+      });
       expect(
         hostEvents.filter((event) => event.direction === "received" && event.message.type === "signal")
       ).toHaveLength(receivedSignalCountBefore);
@@ -4356,7 +4365,7 @@ describe("agent shell consent workflow", () => {
           permissions: ["screen:view"],
           expiresAt
         },
-        {
+        JSON.stringify({
           ...createMessageBase("session-demo"),
           type: "signal",
           fromPeerId: "host-1",
@@ -4365,7 +4374,7 @@ describe("agent shell consent workflow", () => {
             kind: "host-offer",
             safeMarker: missingMarker
           }
-        },
+        }),
         {
           ...createMessageBase("session-demo"),
           type: "signal",
@@ -4549,7 +4558,7 @@ describe("agent shell consent workflow", () => {
       ).length;
       const blockedPayloadMarker = "host-blocked-after-restart-payload";
 
-      sendRawViewerSignal(rawViewerAfterRestart, blockedPayloadMarker);
+      sendRawViewerSignal(rawViewerAfterRestart, blockedPayloadMarker, "authz_after_restart_stale");
       await waitForRawEventCount(hostEvents, rawCountBefore + 1);
       await delay(100);
 
@@ -5590,7 +5599,7 @@ function sendRawViewerSignal(
   payloadMarker: string,
   authorizationId?: string
 ): void {
-  socket.send(encodeProtocolEnvelope({
+  socket.send(JSON.stringify({
     ...createMessageBase("session-demo"),
     type: "signal",
     fromPeerId: "viewer-1",
@@ -5633,10 +5642,20 @@ function waitForRawSocketProtocolMessage(
   socket: WebSocket,
   predicate: (message: ProtocolEnvelope) => boolean
 ): Promise<ProtocolEnvelope> {
+  return waitForRawSocketJsonMessage(
+    socket,
+    (message) => predicate(message as ProtocolEnvelope)
+  ) as Promise<ProtocolEnvelope>;
+}
+
+function waitForRawSocketJsonMessage(
+  socket: WebSocket,
+  predicate: (message: Record<string, unknown>) => boolean
+): Promise<Record<string, unknown>> {
   return withTimeout(
     new Promise((resolve) => {
       const onMessage = (data: RawData) => {
-        const parsed = JSON.parse(data.toString()) as ProtocolEnvelope;
+        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
 
         if (predicate(parsed)) {
           socket.off("message", onMessage);
@@ -6019,7 +6038,7 @@ async function startNonProtocolMessageServer(text: string): Promise<{
   };
 }
 
-async function startViewerAuthorizationLifecycleServer(createMessages: () => ProtocolEnvelope[]): Promise<{
+async function startViewerAuthorizationLifecycleServer(createMessages: () => Array<ProtocolEnvelope | string>): Promise<{
   url: string;
   stop(): Promise<void>;
 }> {
@@ -6027,7 +6046,7 @@ async function startViewerAuthorizationLifecycleServer(createMessages: () => Pro
   wss.on("connection", (socket) => {
     socket.once("message", () => {
       for (const message of createMessages()) {
-        socket.send(encodeProtocolEnvelope(message));
+        socket.send(typeof message === "string" ? message : encodeProtocolEnvelope(message));
       }
     });
   });
@@ -6223,6 +6242,7 @@ async function startMisdirectedSignalServer(): Promise<{
         fromPeerId: "viewer-1",
         toPeerId: "other-peer",
         payload: {
+          authorizationId: "authz_misdirected_signal",
           kind: "offer",
           sdp: "private-signal-payload-marker"
         }
@@ -6233,6 +6253,7 @@ async function startMisdirectedSignalServer(): Promise<{
         fromPeerId: "host-1",
         toPeerId: "host-1",
         payload: {
+          authorizationId: "authz_self_signal",
           kind: "answer",
           sdp: "private-signal-payload-marker"
         }

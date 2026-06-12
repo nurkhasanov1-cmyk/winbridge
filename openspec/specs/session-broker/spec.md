@@ -61,15 +61,23 @@ The relay and agents SHALL validate protocol envelopes before accepting or forwa
 - **THEN** the peer-facing relay error and audit reason MUST NOT include raw protocol payloads, parser internals, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, or full secrets
 
 ### Requirement: Signal payload safety
-The relay and agents SHALL reject `signal` protocol messages whose payload is empty, exceeds the configured protocol payload size bound, or contains keys that indicate raw tokens, credentials, pairing codes, API keys, authorization headers, auth headers, cookies, private keys, keystrokes, screenshots, screen data, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or secrets. Non-secret lifecycle identifiers such as `authorizationId` MUST remain permitted.
+The relay and agents SHALL reject `signal` protocol messages whose payload omits a top-level string `authorizationId`, carries a malformed payload `authorizationId`, is empty, exceeds the configured protocol payload size bound, or contains keys that indicate raw tokens, credentials, pairing codes, API keys, authorization headers, auth headers, cookies, private keys, keystrokes, screenshots, screen data, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or secrets. Non-secret lifecycle identifiers such as `authorizationId` MUST remain permitted.
 
 #### Scenario: Small signaling payload is accepted
-- **WHEN** a registered peer sends a `signal` message containing a non-empty small signaling payload without sensitive key names
+- **WHEN** a registered peer sends a `signal` message containing a non-empty small signaling payload with a valid top-level `authorizationId` and without sensitive key names
 - **THEN** the relay accepts the message as schema-valid and may forward it to the remaining peer
 
 #### Scenario: Lifecycle authorization identifier is accepted
 - **WHEN** a registered peer sends a `signal` message containing `authorizationId` as a non-secret lifecycle identifier and no sensitive key names
 - **THEN** the relay accepts the message as schema-valid and may forward it to the remaining peer
+
+#### Scenario: Missing signal authorization identifier is rejected
+- **WHEN** a registered peer sends a `signal` message whose payload omits top-level `authorizationId`
+- **THEN** the relay rejects the message before forwarding it
+
+#### Scenario: Malformed signal authorization identifier is rejected
+- **WHEN** a registered peer sends a `signal` message whose payload `authorizationId` is not a valid protocol identifier string
+- **THEN** the relay rejects the message before forwarding it
 
 #### Scenario: Empty signal payload is rejected
 - **WHEN** a registered peer sends a `signal` message with an empty payload object

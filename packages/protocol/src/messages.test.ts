@@ -87,6 +87,7 @@ describe("protocol envelopes", () => {
       fromPeerId: "host-1",
       toPeerId: "viewer-1",
       payload: {
+        authorizationId: "authz-demo",
         kind: "offer",
         sdp: "v=0",
         candidates: [{ candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host" }]
@@ -97,10 +98,42 @@ describe("protocol envelopes", () => {
       type: "signal",
       fromPeerId: "host-1",
       payload: {
+        authorizationId: "authz-demo",
         kind: "offer",
         sdp: "v=0"
       }
     });
+  });
+
+  it("rejects signal payloads without top-level authorization identifiers", () => {
+    expect(() =>
+      parseProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "host-1",
+        toPeerId: "viewer-1",
+        payload: {
+          kind: "offer"
+        }
+      })
+    ).toThrow("Signal payload requires authorizationId");
+  });
+
+  it("rejects signal payloads with malformed authorization identifiers", () => {
+    for (const authorizationId of ["", "   ", "authz/unsafe", "x"]) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload: {
+            authorizationId,
+            kind: "offer"
+          }
+        })
+      ).toThrow("Signal payload authorizationId must be a valid protocol identifier");
+    }
   });
 
   it("rejects empty signal payloads", () => {
@@ -123,6 +156,7 @@ describe("protocol envelopes", () => {
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
         payload: {
+          authorizationId: "authz-demo",
           kind: "offer",
           sdp: "x".repeat(16 * 1024)
         }
@@ -138,6 +172,7 @@ describe("protocol envelopes", () => {
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
         payload: {
+          authorizationId: "authz-demo",
           kind: "offer",
           nested: [{ pairingCode: "123-456" }]
         }
@@ -164,7 +199,10 @@ describe("protocol envelopes", () => {
           type: "signal",
           fromPeerId: "host-1",
           toPeerId: "viewer-1",
-          payload
+          payload: {
+            authorizationId: "authz-demo",
+            ...payload
+          }
         })
       ).toThrow("must not contain sensitive remote-assistance data");
     }
@@ -189,7 +227,10 @@ describe("protocol envelopes", () => {
           type: "signal",
           fromPeerId: "host-1",
           toPeerId: "viewer-1",
-          payload
+          payload: {
+            authorizationId: "authz-demo",
+            ...payload
+          }
         })
       ).toThrow("must not contain sensitive remote-assistance data");
     }
@@ -229,6 +270,7 @@ describe("protocol envelopes", () => {
         fromPeerId: "host-1",
         toPeerId: "viewer-1",
         payload: {
+          authorizationId: "authz-demo",
           kind: "offer",
           screenContent: "raw screen"
         }
