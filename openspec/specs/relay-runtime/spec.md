@@ -89,6 +89,19 @@ The relay runtime SHALL expose integration-test coverage proving malformed peer 
 - **WHEN** the relay audits the malformed protocol rejection
 - **THEN** the audit reason and detail do not contain the raw malformed message contents
 
+### Requirement: Canonical relay-error encoding
+The relay runtime SHALL encode relay-owned `relay-error` responses through canonical JSON serialization that is not affected by inherited `toJSON` hooks or prototype pollution.
+
+#### Scenario: Relay-error encoding ignores inherited toJSON hooks
+- **WHEN** a registered peer sends malformed protocol input while an inherited `Object.prototype.toJSON` hook is present in the relay process
+- **THEN** the sender receives a `relay-error` response with only the bounded reason fields
+- **AND** the response body MUST NOT include fields injected by inherited `toJSON` hooks
+- **AND** the remaining peer receives no forwarded protocol message
+
+#### Scenario: Relay-error rejection audit remains secret-safe
+- **WHEN** the relay emits a `relay-error` response for malformed registered peer input
+- **THEN** the relay audit record remains bounded and secret-safe without raw malformed payload contents or fields injected by inherited `toJSON` hooks
+
 ### Requirement: Testable audit behavior
 The relay runtime SHALL allow tests to inject audit sinks and inspect security-relevant runtime events.
 

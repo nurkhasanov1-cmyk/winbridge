@@ -20,6 +20,7 @@ import {
   decodeProtocolEnvelope,
   encodeProtocolEnvelope,
   JoinSessionMessageSchema,
+  stringifyJson,
   type AuditDetail,
   type ProtocolEnvelope
 } from "@winbridge/protocol";
@@ -260,7 +261,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
           }
         });
         socket.send(
-          JSON.stringify({
+          stringifyJson({
             type: "relay-error",
             reason
           })

@@ -22,6 +22,7 @@ const silentLogger = {
   log: () => undefined,
   warn: () => undefined
 };
+const INHERITED_TO_JSON_PRIVATE_MARKER = "inherited-to-json-private-marker";
 
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((runtime) => runtime.stop()));
@@ -562,6 +563,35 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(rejected)).not.toContain("secret-token");
     expect(JSON.stringify(rejected)).not.toContain("123-456");
     expect(JSON.stringify(rejected)).not.toContain("not-json");
+  });
+
+  it("encodes relay errors without inherited toJSON hooks", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+
+    const result = await withInheritedObjectToJsonHook(async () => {
+      host.send(`not-json secret-token 123-456 ${INHERITED_TO_JSON_PRIVATE_MARKER}`);
+
+      const relayError = await waitForRawJsonMessage(host, (message) => message.type === "relay-error");
+      await expectNoProtocolMessage(viewer, (message) => message.type === "signal");
+      const rejected = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+      );
+
+      return { relayError, rejected };
+    });
+
+    expect(result.relayError.message).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    expect(result.relayError.raw).not.toContain(INHERITED_TO_JSON_PRIVATE_MARKER);
+    expect(result.relayError.raw).not.toContain("raw-screen-content");
+    expect(JSON.stringify(result.rejected)).not.toContain(INHERITED_TO_JSON_PRIVATE_MARKER);
+    expect(JSON.stringify(result.rejected)).not.toContain("secret-token");
+    expect(JSON.stringify(result.rejected)).not.toContain("123-456");
   });
 
   it("rejects malformed join identifiers without reflecting them", async () => {
@@ -1946,14 +1976,22 @@ function waitForJsonMessage<T extends Record<string, unknown>>(
   socket: WebSocket,
   predicate: (message: Record<string, unknown>) => boolean
 ): Promise<T> {
+  return waitForRawJsonMessage<T>(socket, predicate).then((result) => result.message);
+}
+
+function waitForRawJsonMessage<T extends Record<string, unknown>>(
+  socket: WebSocket,
+  predicate: (message: Record<string, unknown>) => boolean
+): Promise<{ raw: string; message: T }> {
   return withTimeout(
     new Promise((resolve) => {
       const onMessage = (data: RawData) => {
-        const parsed = JSON.parse(data.toString()) as Record<string, unknown>;
+        const raw = data.toString();
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
 
         if (predicate(parsed)) {
           socket.off("message", onMessage);
-          resolve(parsed as T);
+          resolve({ raw, message: parsed as T });
         }
       };
 
@@ -2051,4 +2089,42 @@ function restoreEnv(name: string, value: string | undefined): void {
   }
 
   process.env[name] = value;
+}
+
+async function withInheritedObjectToJsonHook<T>(callback: () => Promise<T>): Promise<T> {
+  const objectToJson = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+  Object.defineProperty(Object.prototype, "toJSON", {
+    configurable: true,
+    value: function inheritedRelayErrorToJson(this: Record<string, unknown>) {
+      if (this.type !== "relay-error" || this.reason !== "Invalid relay message") {
+        return this;
+      }
+
+      return {
+        type: "relay-error",
+        reason: "Injected relay error",
+        injectedPrivateMarker: INHERITED_TO_JSON_PRIVATE_MARKER,
+        screenContent: "raw-screen-content"
+      };
+    }
+  });
+
+  try {
+    return await callback();
+  } finally {
+    restorePropertyDescriptor(Object.prototype, "toJSON", objectToJson);
+  }
+}
+
+function restorePropertyDescriptor(
+  target: object,
+  key: string,
+  descriptor: PropertyDescriptor | undefined
+): void {
+  if (descriptor) {
+    Object.defineProperty(target, key, descriptor);
+    return;
+  }
+
+  delete (target as Record<string, unknown>)[key];
 }
