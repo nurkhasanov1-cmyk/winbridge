@@ -10,7 +10,15 @@ export const AuditActorSchema = z.object({
   type: z.enum(["system", "relay", "host", "viewer"]),
   id: ProtocolIdentifierSchema,
   deviceId: ProtocolIdentifierSchema.min(8).optional()
-}).strict();
+}).strict().superRefine((actor, context) => {
+  if ((actor.type === "system" || actor.type === "relay") && actor.deviceId !== undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["deviceId"],
+      message: "Infrastructure audit actors must not include deviceId"
+    });
+  }
+});
 export type AuditActor = z.infer<typeof AuditActorSchema>;
 export type AuditJsonValue = JsonValue;
 export type AuditDetail = JsonObject;

@@ -15,6 +15,42 @@ describe("audit records", () => {
     expect(record.detail).toEqual({ role: "viewer" });
   });
 
+  it("allows device ids only for participant audit actors", () => {
+    expect(
+      createAuditRecord({
+        actor: { type: "host", id: "host-1", deviceId: "dev_host_1" },
+        action: "agent-shell.authorization.active",
+        outcome: "accepted",
+        sessionId: "session-demo"
+      }).actor
+    ).toEqual({ type: "host", id: "host-1", deviceId: "dev_host_1" });
+    expect(
+      createAuditRecord({
+        actor: { type: "viewer", id: "viewer-1", deviceId: "dev_viewer_1" },
+        action: "agent-shell.authorization.requested",
+        outcome: "accepted",
+        sessionId: "session-demo"
+      }).actor
+    ).toEqual({ type: "viewer", id: "viewer-1", deviceId: "dev_viewer_1" });
+
+    for (const actorType of ["system", "relay"] as const) {
+      try {
+        createAuditRecord({
+          actor: { type: actorType, id: `${actorType}-dev`, deviceId: `dev_${actorType}_private` },
+          action: "relay.peer.join.accepted",
+          outcome: "accepted"
+        });
+        throw new Error(`Expected ${actorType} actor deviceId to be rejected`);
+      } catch (error) {
+        expect(error, actorType).toBeInstanceOf(Error);
+        expect((error as Error).message, actorType).toContain(
+          "Infrastructure audit actors must not include deviceId"
+        );
+        expect((error as Error).message, actorType).not.toContain(`dev_${actorType}_private`);
+      }
+    }
+  });
+
   it("accepts JSON-compatible audit detail values", () => {
     const record = createAuditRecord({
       actor: { type: "relay", id: "relay-dev" },
