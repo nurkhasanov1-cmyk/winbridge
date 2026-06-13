@@ -198,6 +198,16 @@ describe("agent shell consent workflow", () => {
         "Runtime requested permissions"
       ],
       [
+        "clipboard read requested permission",
+        { requestedPermissions: ["clipboard:read"] },
+        "Runtime requested permissions"
+      ],
+      [
+        "clipboard write requested permission",
+        { requestedPermissions: ["clipboard:write"] },
+        "Runtime requested permissions"
+      ],
+      [
         "duplicate requested permission",
         { requestedPermissions: ["screen:view", "screen:view"] },
         "Runtime requested permissions"
@@ -228,6 +238,16 @@ describe("agent shell consent workflow", () => {
         "Runtime host grant scope"
       ],
       [
+        "clipboard read host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: ["clipboard:read"] },
+        "Runtime host grant scope"
+      ],
+      [
+        "clipboard write host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: ["clipboard:write"] },
+        "Runtime host grant scope"
+      ],
+      [
         "viewer host grant scope",
         {
           role: "viewer",
@@ -252,6 +272,16 @@ describe("agent shell consent workflow", () => {
       [
         "invalid revoke permission",
         { hostRevokePermission: "input:keylogger" as Permission },
+        "Runtime revoke permission"
+      ],
+      [
+        "clipboard read revoke permission",
+        { hostRevokePermission: "clipboard:read" },
+        "Runtime revoke permission"
+      ],
+      [
+        "clipboard write revoke permission",
+        { hostRevokePermission: "clipboard:write" },
         "Runtime revoke permission"
       ],
       [

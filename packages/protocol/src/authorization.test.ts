@@ -1578,6 +1578,75 @@ describe("session authorization state machine", () => {
     ).toThrow();
   });
 
+  it("rejects clipboard permissions until an explicit clipboard capability exists", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+
+    for (const rawPermission of ["clipboard:read", "clipboard:write"] as const) {
+      const clipboardPermissions = [rawPermission] as unknown as Parameters<
+        typeof createPendingSessionAuthorization
+      >[0]["requestedPermissions"];
+      const clipboardGrant = [rawPermission] as unknown as Parameters<
+        typeof approveSessionAuthorization
+      >[1]["grantedPermissions"];
+      const clipboardPermission = rawPermission as unknown as Parameters<
+        typeof revokeSessionPermission
+      >[1]["permission"];
+
+      expect(() =>
+        createPendingSessionAuthorization({
+          sessionId: "session-demo",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          requestedPermissions: clipboardPermissions,
+          now: baseTime
+        })
+      ).toThrow();
+      expect(() =>
+        approveSessionAuthorization(pending(), {
+          grantedPermissions: clipboardGrant,
+          now: baseTime
+        })
+      ).toThrow();
+      expect(() =>
+        SessionAuthorizationSchema.parse({
+          ...pending(),
+          permissions: clipboardPermissions
+        })
+      ).toThrow();
+      expect(() =>
+        assertConsentBoundGrant({
+          sessionId: "session-demo",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          permissions: clipboardPermissions,
+          requiresHostApproval: true,
+          visibleSessionRequired: true,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          auditId: "audit-demo"
+        })
+      ).toThrow();
+      expect(() =>
+        revokeSessionPermission(active, {
+          permission: clipboardPermission,
+          now: baseTime
+        })
+      ).toThrow();
+      expect(() =>
+        assertSessionActionAuthorized({
+          authorization: active,
+          permission: clipboardPermission,
+          now: baseTime
+        })
+      ).toThrow();
+    }
+  });
+
   it("rejects diagnostics permissions until an explicit diagnostics capability exists", () => {
     const active = activateSessionAuthorization(
       approveSessionAuthorization(pending(), {

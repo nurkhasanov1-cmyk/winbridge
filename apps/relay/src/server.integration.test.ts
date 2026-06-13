@@ -2838,7 +2838,7 @@ describe("relay runtime integration", () => {
       },
       {
         name: "session authorization decision",
-        grantMarker: "clipboard:write",
+        grantMarker: "input:pointer",
         rejectedType: "session-authorization-decision",
         privateMarker: "authorization-decision-private-marker",
         buildMessage: () => ({
@@ -2848,7 +2848,7 @@ describe("relay runtime integration", () => {
           hostPeerId: "viewer-1",
           viewerPeerId: "viewer-1",
           decision: "approved",
-          grantedPermissions: ["clipboard:write"],
+          grantedPermissions: ["input:pointer"],
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           reason: "authorization-decision-private-marker"
         })

@@ -381,6 +381,12 @@ describe("agent shell arguments", () => {
     expect(() => parseArgs(["viewer", "--request", "input:keylogger"], {}, 42)).toThrow(
       AgentShellUsageError
     );
+    expect(() => parseArgs(["viewer", "--request", "clipboard:read"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() => parseArgs(["viewer", "--request", "clipboard:write"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
     expect(() => parseArgs(["viewer", "--pairing", "secret"], {}, 42)).toThrow(
       AgentShellUsageError
     );
@@ -419,10 +425,36 @@ describe("agent shell arguments", () => {
       ["host", "--host-decision", "none", "--grant", "screen:view"],
       ["host", "--host-decision", "deny", "--grant", "screen:view"],
       ["host", "--host-decision", "approve", "--grant", "input:keylogger"],
+      ["host", "--host-decision", "approve", "--grant", "clipboard:read"],
+      ["host", "--host-decision", "approve", "--grant", "clipboard:write"],
       ["host", "--host-decision", "approve", "--grant", "screen:view,screen:view"],
       ["host", "--host-decision", "approve", "--grant", " screen:view"]
     ]) {
       expect(() => parseArgs(raw, {}, 42)).toThrow(AgentShellUsageError);
+    }
+  });
+
+  it("rejects clipboard permission revocation options", () => {
+    for (const permission of ["clipboard:read", "clipboard:write"] as const) {
+      expect(() =>
+        parseArgs(
+          [
+            "host",
+            "--request",
+            "screen:view",
+            "--host-decision",
+            "approve",
+            "--grant",
+            "screen:view",
+            "--visible-session",
+            "true",
+            "--revoke-permission",
+            permission
+          ],
+          {},
+          42
+        )
+      ).toThrow(AgentShellUsageError);
     }
   });
 

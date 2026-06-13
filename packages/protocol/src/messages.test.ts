@@ -2153,6 +2153,77 @@ describe("protocol envelopes", () => {
     ).toThrow();
   });
 
+  it("rejects clipboard permissions in authorization protocol messages", () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+
+    for (const permission of ["clipboard:read", "clipboard:write"] as const) {
+      const messages = [
+        {
+          ...createMessageBase("session-demo"),
+          type: "host-consent-required",
+          viewerPeerId: "viewer-1",
+          viewerDisplayName: "Viewer",
+          requestedPermissions: [permission]
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "host-consent-decision",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          approved: true,
+          grantedPermissions: [permission]
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-request",
+          viewerPeerId: "viewer-1",
+          requestedPermissions: [permission]
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz-demo",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: [permission],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz-demo",
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: [permission],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "permission-revoked",
+          authorizationId: "authz-demo",
+          actorPeerId: "host-1",
+          revokedPermission: permission,
+          reason: "Host revoked clipboard"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-control",
+          authorizationId: "authz-demo",
+          actorPeerId: "host-1",
+          action: "revoke-permission",
+          permission,
+          reason: "Host revoked clipboard"
+        }
+      ];
+
+      for (const message of messages) {
+        expect(() => parseProtocolEnvelope(message)).toThrow();
+      }
+    }
+  });
+
   it("rejects diagnostics permissions in authorization protocol messages", () => {
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
     const messages = [

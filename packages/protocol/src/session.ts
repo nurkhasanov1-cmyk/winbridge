@@ -18,7 +18,7 @@ export const ProtocolIdentifierSchema = z
 export const SessionIdSchema = ProtocolIdentifierSchema;
 export const PeerIdSchema = ProtocolIdentifierSchema;
 
-export const PermissionSchema = z.enum([
+const BasePermissionSchema = z.enum([
   "screen:view",
   "input:pointer",
   "input:keyboard",
@@ -26,7 +26,17 @@ export const PermissionSchema = z.enum([
   "clipboard:write",
   "file-transfer"
 ]);
-export type Permission = z.infer<typeof PermissionSchema>;
+export type Permission = z.infer<typeof BasePermissionSchema>;
+
+const UNAVAILABLE_PERMISSIONS: ReadonlySet<Permission> = new Set([
+  "clipboard:read",
+  "clipboard:write"
+]);
+
+export const PermissionSchema = BasePermissionSchema.refine(
+  (permission) => !UNAVAILABLE_PERMISSIONS.has(permission),
+  "Permission requires an explicit capability review"
+);
 
 const SessionGrantPermissionsSchema = z
   .array(PermissionSchema)
