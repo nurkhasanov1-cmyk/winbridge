@@ -1061,7 +1061,7 @@ The host shell SHALL generate authorization approval and active-state protocol m
 - **THEN** the host shell sends the expired state and expiration audit, and does not send pause, resume, paused state, resumed active state, or their workflow audit events for that expired authorization
 
 ### Requirement: Host pause and resume simulation
-The host shell SHALL send pause and resume simulation messages only when they are explicitly configured and the host has already emitted an active visible session state for the same authorization. Host-generated pause and resume `session-control` messages MUST include the authorization id of the visible active session being controlled.
+The host shell SHALL send pause and resume messages only when delayed simulation is explicitly configured or direct local host pause/resume control is invoked. Host pause control MUST be available only to host runtimes with visible active unexpired authorization. Host resume control MUST be available only to host runtimes with visible paused unexpired authorization. Host-generated pause and resume `session-control` messages MUST include the authorization id of the visible session being controlled.
 
 #### Scenario: Host pauses after visible activation
 - **WHEN** the host shell is explicitly configured to approve, visible session state is true, and a pause delay is configured
@@ -1071,12 +1071,32 @@ The host shell SHALL send pause and resume simulation messages only when they ar
 - **WHEN** the host shell has paused an authorization and a resume delay is configured
 - **THEN** it sends `session-control` with action `resume` and the paused authorization id, sends `session-authorization-state` with status `active`, and sends a secret-safe resume `audit-event`
 
+#### Scenario: Direct host pause pauses a visible active session
+- **WHEN** host runtime code invokes local pause control after visible active authorization
+- **THEN** it sends `session-control` with action `pause`, sends `session-authorization-state` with status `paused`, emits a paused local host indicator, and sends a secret-safe pause `audit-event`
+
+#### Scenario: Direct host resume resumes a visible paused session
+- **WHEN** host runtime code invokes local resume control after visible paused authorization
+- **THEN** it sends `session-control` with action `resume`, sends `session-authorization-state` with status `active`, emits an active local host indicator, and sends a secret-safe resume `audit-event`
+
+#### Scenario: Direct host pause requires active visible authorization
+- **WHEN** runtime code invokes local pause control before visible active host authorization
+- **THEN** the runtime MUST reject the control before sending session-control, authorization-state, or audit-event messages
+
+#### Scenario: Direct host resume requires paused visible authorization
+- **WHEN** runtime code invokes local resume control before visible paused host authorization
+- **THEN** the runtime MUST reject the control before sending session-control, authorization-state, or audit-event messages
+
+#### Scenario: Direct host pause and resume are host-only
+- **WHEN** viewer runtime code invokes local pause or resume control
+- **THEN** the runtime MUST reject the control before sending session-control, authorization-state, or audit-event messages
+
 #### Scenario: Pause configured without visible activation
 - **WHEN** the host shell is configured to approve but visible session state is false
 - **THEN** it does not send pause or resume `session-control` messages and does not send paused state updates
 
 #### Scenario: Terminal state suppresses pause and resume
-- **WHEN** pause or resume is scheduled and the authorization is revoked, terminated, or expired first
+- **WHEN** pause or resume is scheduled or invoked and the authorization is revoked, terminated, expired, disconnected, or otherwise no longer active or paused visible
 - **THEN** the host shell does not send later pause or resume messages for the same authorization
 
 #### Scenario: Pause and resume audit details are secret-safe
@@ -1084,8 +1104,8 @@ The host shell SHALL send pause and resume simulation messages only when they ar
 - **THEN** audit details MUST NOT contain raw tokens, raw pairing codes, credentials, display names, signal payloads, keystrokes, screenshots, screen contents, or raw pause/resume reason text
 
 #### Scenario: Pause and resume simulation safety boundary
-- **WHEN** the host shell sends pause or resume simulation messages
-- **THEN** it MUST NOT start screen capture, send input, sync clipboard, transfer files, install services, configure startup persistence, collect credentials, or hide the session from the host
+- **WHEN** the host shell sends pause or resume simulation messages or direct pause/resume control messages
+- **THEN** it MUST NOT start screen capture, send input, sync clipboard, transfer files, install services, configure startup persistence, collect credentials, hide the session from the host, or bypass consent workflows
 
 ### Requirement: Host workflow audit file persistence
 The host shell SHALL persist local development audit records for host-generated workflow `audit-event` messages and host-local disconnect controls when an audit sink is configured. When an audit sink is configured, the host shell MUST successfully write the matching local audit record before sending the associated host authorization decision, authorization state, permission revoke, session control, or protocol `audit-event` message for that audited workflow action. Local host disconnect audit failures MUST be surfaced through sanitized runtime diagnostics but MUST NOT prevent host indicator deactivation or local WebSocket close.
@@ -1123,7 +1143,7 @@ The host shell SHALL persist local development audit records for host-generated 
 - **THEN** it MUST surface the sanitized runtime failure before sending the denial decision or denial audit-event
 
 #### Scenario: Lifecycle update is not sent when lifecycle audit persistence fails
-- **WHEN** the host shell is configured with an audit sink and a delayed revocation, pause, resume, termination, or expiration audit write fails
+- **WHEN** the host shell is configured with an audit sink and a delayed or direct revocation, pause, resume, termination, or expiration audit write fails
 - **THEN** it MUST surface the sanitized runtime failure before sending the associated permission revoke, session control, authorization state, or lifecycle audit-event message
 
 #### Scenario: Local disconnect proceeds when disconnect audit persistence fails

@@ -145,6 +145,8 @@ export type AgentShellRuntime = {
   start(): Promise<void>;
   stop(): Promise<void>;
   disconnect(): void;
+  pause(): void;
+  resume(): void;
   send(message: ProtocolEnvelope): void;
 };
 
@@ -181,6 +183,12 @@ const AGENT_SHELL_LOCAL_DISCONNECT_ROLE_ERROR_MESSAGE =
   "Agent shell local disconnect control is only valid for host runtimes";
 const AGENT_SHELL_LOCAL_DISCONNECT_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell local disconnect control requires active visible host authorization";
+const AGENT_SHELL_PAUSE_ROLE_ERROR_MESSAGE = "Agent shell pause control is only valid for host runtimes";
+const AGENT_SHELL_PAUSE_AUTHORIZATION_ERROR_MESSAGE =
+  "Agent shell pause control requires active visible host authorization";
+const AGENT_SHELL_RESUME_ROLE_ERROR_MESSAGE = "Agent shell resume control is only valid for host runtimes";
+const AGENT_SHELL_RESUME_AUTHORIZATION_ERROR_MESSAGE =
+  "Agent shell resume control requires paused visible host authorization";
 const AGENT_SHELL_SIGNAL_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell signal requires active visible screen authorization";
 const AGENT_SHELL_SIGNAL_ROUTING_ERROR_MESSAGE =
@@ -217,6 +225,7 @@ type AgentShellSessionState = {
   observedPeerRole?: SessionRole;
   helloSent: boolean;
   hostAuthorization?: RuntimeAuthorizationSnapshot;
+  hostWorkflowState?: HostWorkflowState;
   viewerAuthorization?: RuntimeAuthorizationSnapshot;
   hostIndicator?: AgentShellHostIndicatorEvent;
 };
@@ -230,6 +239,15 @@ type RuntimeAuthorizationSnapshot = {
   permissions: Permission[];
   revokedPermissions?: Permission[];
   expiresAt?: string;
+};
+
+type VisibleRuntimeAuthorizationSnapshot = RuntimeAuthorizationSnapshot & {
+  expiresAt: string;
+};
+
+type LocalHostWorkflowControl = {
+  authorization: VisibleRuntimeAuthorizationSnapshot;
+  workflowState: HostWorkflowState;
 };
 
 export function createAgentShellRuntime(options: AgentShellRuntimeOptions): AgentShellRuntime {
@@ -357,6 +375,70 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
       );
     },
 
+    pause() {
+      if (!socket) {
+        throw new Error("Agent shell runtime is not started");
+      }
+
+      if (sessionState.localPeerDisconnected) {
+        throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      if (sessionState.remotePeerDisconnected) {
+        throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      assertLocalRuntimeSocketOpen(socket);
+      const { authorization, workflowState } = getLocalHostPauseControl(options, sessionState);
+      try {
+        pauseHostAuthorization(
+          socket,
+          options,
+          authorization.authorizationId,
+          authorization.expiresAt,
+          workflowState,
+          sessionState,
+          options.hostPauseReason ?? "Host paused session",
+          Boolean(options.hostPauseReason)
+        );
+      } catch (error) {
+        reportRuntimeError(options, error);
+        throw createSanitizedRuntimeError();
+      }
+    },
+
+    resume() {
+      if (!socket) {
+        throw new Error("Agent shell runtime is not started");
+      }
+
+      if (sessionState.localPeerDisconnected) {
+        throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      if (sessionState.remotePeerDisconnected) {
+        throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      assertLocalRuntimeSocketOpen(socket);
+      const { authorization, workflowState } = getLocalHostResumeControl(options, sessionState);
+      try {
+        resumeHostAuthorization(
+          socket,
+          options,
+          authorization.authorizationId,
+          authorization.expiresAt,
+          workflowState,
+          sessionState,
+          options.hostResumeReason ?? "Host resumed session",
+          Boolean(options.hostResumeReason)
+        );
+      } catch (error) {
+        reportRuntimeError(options, error);
+        throw createSanitizedRuntimeError();
+      }
+    },
+
     send(message: ProtocolEnvelope) {
       if (!socket) {
         throw new Error("Agent shell runtime is not started");
@@ -429,6 +511,7 @@ function resetConnectionScopedSessionState(sessionState: AgentShellSessionState)
   sessionState.observedPeerRole = undefined;
   sessionState.helloSent = false;
   sessionState.hostAuthorization = undefined;
+  sessionState.hostWorkflowState = undefined;
   sessionState.viewerAuthorization = undefined;
   sessionState.hostIndicator = undefined;
 }
@@ -1288,6 +1371,7 @@ async function handleHostAuthorizationRequest(
     permissions: request.requestedPermissions,
     expiresAt
   });
+  sessionState.hostWorkflowState = workflowState;
   emitHostIndicatorFromAuthorization(options, sessionState, "activated");
   sendProtocol(socket, options, {
     ...createGrantMessageBase(),
@@ -1918,6 +2002,172 @@ function scheduleHostRevoke(
   }, options.hostRevokeAfterMs);
 }
 
+function canSendHostPause(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  workflowState: HostWorkflowState,
+  sessionState: AgentShellSessionState,
+  expiresAt: string
+): boolean {
+  if (workflowState.terminalStatus) {
+    options.logger?.log(`[winbridge-agent] pause skipped because authorization is ${workflowState.terminalStatus}`);
+    return false;
+  }
+
+  if (workflowState.paused) {
+    options.logger?.log("[winbridge-agent] pause skipped because authorization is already paused");
+    return false;
+  }
+
+  if (!canSendDelayedHostWorkflow(socket, options, sessionState, "pause")) {
+    return false;
+  }
+
+  if (hasAuthorizationExpired(expiresAt)) {
+    options.logger?.log("[winbridge-agent] pause skipped because authorization is expired");
+    return false;
+  }
+
+  return true;
+}
+
+function canSendHostResume(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  workflowState: HostWorkflowState,
+  sessionState: AgentShellSessionState,
+  expiresAt: string
+): boolean {
+  if (workflowState.terminalStatus) {
+    options.logger?.log(`[winbridge-agent] resume skipped because authorization is ${workflowState.terminalStatus}`);
+    return false;
+  }
+
+  if (!workflowState.paused) {
+    options.logger?.log("[winbridge-agent] resume skipped because authorization is not paused");
+    return false;
+  }
+
+  if (!canSendDelayedHostWorkflow(socket, options, sessionState, "resume")) {
+    return false;
+  }
+
+  if (hasAuthorizationExpired(expiresAt)) {
+    options.logger?.log("[winbridge-agent] resume skipped because authorization is expired");
+    return false;
+  }
+
+  return true;
+}
+
+function pauseHostAuthorization(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  authorizationId: string,
+  expiresAt: string,
+  workflowState: HostWorkflowState,
+  sessionState: AgentShellSessionState,
+  reason: string,
+  reasonConfigured: boolean
+): void {
+  const auditEvent = prepareDevelopmentAuditEvent(options, {
+    action: "agent-shell.authorization.paused",
+    outcome: "accepted",
+    detail: {
+      grantedPermissionCount: workflowState.permissions.length,
+      visibleToHost: true,
+      paused: true,
+      reasonConfigured
+    }
+  });
+  workflowState.paused = true;
+
+  setHostAuthorizationSnapshot(sessionState, {
+    authorizationId,
+    status: "paused",
+    visibleToHost: true,
+    permissions: workflowState.permissions,
+    expiresAt
+  });
+  emitHostIndicatorFromAuthorization(options, sessionState, "paused");
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-control",
+    authorizationId,
+    actorPeerId: options.peerId,
+    action: "pause",
+    reason
+  });
+
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-authorization-state",
+    authorizationId,
+    actorPeerId: options.peerId,
+    status: "paused",
+    visibleToHost: true,
+    permissions: workflowState.permissions,
+    expiresAt,
+    reason
+  });
+
+  sendProtocol(socket, options, auditEvent);
+}
+
+function resumeHostAuthorization(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  authorizationId: string,
+  expiresAt: string,
+  workflowState: HostWorkflowState,
+  sessionState: AgentShellSessionState,
+  reason: string,
+  reasonConfigured: boolean
+): void {
+  const auditEvent = prepareDevelopmentAuditEvent(options, {
+    action: "agent-shell.authorization.resumed",
+    outcome: "accepted",
+    detail: {
+      grantedPermissionCount: workflowState.permissions.length,
+      visibleToHost: true,
+      resumed: true,
+      reasonConfigured
+    }
+  });
+  workflowState.paused = false;
+
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-control",
+    authorizationId,
+    actorPeerId: options.peerId,
+    action: "resume",
+    reason
+  });
+
+  setHostAuthorizationSnapshot(sessionState, {
+    authorizationId,
+    status: "active",
+    visibleToHost: true,
+    permissions: workflowState.permissions,
+    expiresAt
+  });
+  emitHostIndicatorFromAuthorization(options, sessionState, "resumed");
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-authorization-state",
+    authorizationId,
+    actorPeerId: options.peerId,
+    status: "active",
+    visibleToHost: true,
+    permissions: workflowState.permissions,
+    expiresAt,
+    reason
+  });
+
+  sendProtocol(socket, options, auditEvent);
+}
+
 function scheduleHostPause(
   socket: WebSocket | undefined,
   options: AgentShellRuntimeOptions,
@@ -1937,68 +2187,20 @@ function scheduleHostPause(
   const reason = options.hostPauseReason ?? "Host paused session";
 
   scheduleTimer(() => {
-    if (workflowState.terminalStatus) {
-      options.logger?.log(`[winbridge-agent] pause skipped because authorization is ${workflowState.terminalStatus}`);
+    if (!canSendHostPause(socket, options, workflowState, sessionState, expiresAt)) {
       return;
     }
 
-    if (workflowState.paused) {
-      options.logger?.log("[winbridge-agent] pause skipped because authorization is already paused");
-      return;
-    }
-
-    if (!canSendDelayedHostWorkflow(socket, options, sessionState, "pause")) {
-      return;
-    }
-
-    if (hasAuthorizationExpired(expiresAt)) {
-      options.logger?.log("[winbridge-agent] pause skipped because authorization is expired");
-      return;
-    }
-
-    const auditEvent = prepareDevelopmentAuditEvent(options, {
-      action: "agent-shell.authorization.paused",
-      outcome: "accepted",
-      detail: {
-        grantedPermissionCount: workflowState.permissions.length,
-        visibleToHost: true,
-        paused: true,
-        reasonConfigured: Boolean(options.hostPauseReason)
-      }
-    });
-    workflowState.paused = true;
-
-    setHostAuthorizationSnapshot(sessionState, {
+    pauseHostAuthorization(
+      socket,
+      options,
       authorizationId,
-      status: "paused",
-      visibleToHost: true,
-      permissions: workflowState.permissions,
-      expiresAt
-    });
-    emitHostIndicatorFromAuthorization(options, sessionState, "paused");
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-control",
-      authorizationId,
-      actorPeerId: options.peerId,
-      action: "pause",
-      reason
-    });
-
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-authorization-state",
-      authorizationId,
-      actorPeerId: options.peerId,
-      status: "paused",
-      visibleToHost: true,
-      permissions: workflowState.permissions,
       expiresAt,
-      reason
-    });
-
-    sendProtocol(socket, options, auditEvent);
-
+      workflowState,
+      sessionState,
+      reason,
+      Boolean(options.hostPauseReason)
+    );
     scheduleHostResume(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   }, options.hostPauseAfterMs);
 }
@@ -2019,67 +2221,20 @@ function scheduleHostResume(
   const reason = options.hostResumeReason ?? "Host resumed session";
 
   scheduleTimer(() => {
-    if (workflowState.terminalStatus) {
-      options.logger?.log(`[winbridge-agent] resume skipped because authorization is ${workflowState.terminalStatus}`);
+    if (!canSendHostResume(socket, options, workflowState, sessionState, expiresAt)) {
       return;
     }
 
-    if (!workflowState.paused) {
-      options.logger?.log("[winbridge-agent] resume skipped because authorization is not paused");
-      return;
-    }
-
-    if (!canSendDelayedHostWorkflow(socket, options, sessionState, "resume")) {
-      return;
-    }
-
-    if (hasAuthorizationExpired(expiresAt)) {
-      options.logger?.log("[winbridge-agent] resume skipped because authorization is expired");
-      return;
-    }
-
-    const auditEvent = prepareDevelopmentAuditEvent(options, {
-      action: "agent-shell.authorization.resumed",
-      outcome: "accepted",
-      detail: {
-        grantedPermissionCount: workflowState.permissions.length,
-        visibleToHost: true,
-        resumed: true,
-        reasonConfigured: Boolean(options.hostResumeReason)
-      }
-    });
-    workflowState.paused = false;
-
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-control",
+    resumeHostAuthorization(
+      socket,
+      options,
       authorizationId,
-      actorPeerId: options.peerId,
-      action: "resume",
-      reason
-    });
-
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: "active",
-      visibleToHost: true,
-      permissions: workflowState.permissions,
-      expiresAt
-    });
-    emitHostIndicatorFromAuthorization(options, sessionState, "resumed");
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-authorization-state",
-      authorizationId,
-      actorPeerId: options.peerId,
-      status: "active",
-      visibleToHost: true,
-      permissions: workflowState.permissions,
       expiresAt,
-      reason
-    });
-
-    sendProtocol(socket, options, auditEvent);
+      workflowState,
+      sessionState,
+      reason,
+      Boolean(options.hostResumeReason)
+    );
   }, options.hostResumeAfterMs);
 }
 
@@ -2260,10 +2415,78 @@ function scheduleHostDisconnect(
   }, options.hostDisconnectAfterMs);
 }
 
+function getLocalHostPauseControl(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): LocalHostWorkflowControl {
+  if (options.role !== "host") {
+    throw new Error(AGENT_SHELL_PAUSE_ROLE_ERROR_MESSAGE);
+  }
+
+  const authorization = sessionState.hostAuthorization;
+  const workflowState = sessionState.hostWorkflowState;
+  if (
+    !workflowState ||
+    workflowState.terminalStatus ||
+    workflowState.paused ||
+    !hasLocalHostPauseAuthorization(authorization)
+  ) {
+    throw new Error(AGENT_SHELL_PAUSE_AUTHORIZATION_ERROR_MESSAGE);
+  }
+
+  return { authorization, workflowState };
+}
+
+function getLocalHostResumeControl(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): LocalHostWorkflowControl {
+  if (options.role !== "host") {
+    throw new Error(AGENT_SHELL_RESUME_ROLE_ERROR_MESSAGE);
+  }
+
+  const authorization = sessionState.hostAuthorization;
+  const workflowState = sessionState.hostWorkflowState;
+  if (
+    !workflowState ||
+    workflowState.terminalStatus ||
+    !workflowState.paused ||
+    !hasLocalHostResumeAuthorization(authorization)
+  ) {
+    throw new Error(AGENT_SHELL_RESUME_AUTHORIZATION_ERROR_MESSAGE);
+  }
+
+  return { authorization, workflowState };
+}
+
+function hasLocalHostPauseAuthorization(
+  snapshot: RuntimeAuthorizationSnapshot | undefined
+): snapshot is VisibleRuntimeAuthorizationSnapshot {
+  return Boolean(
+    snapshot &&
+      snapshot.visibleToHost &&
+      snapshot.status === "active" &&
+      snapshot.expiresAt &&
+      !hasAuthorizationExpired(snapshot.expiresAt)
+  );
+}
+
+function hasLocalHostResumeAuthorization(
+  snapshot: RuntimeAuthorizationSnapshot | undefined
+): snapshot is VisibleRuntimeAuthorizationSnapshot {
+  return Boolean(
+    snapshot &&
+      snapshot.visibleToHost &&
+      snapshot.status === "paused" &&
+      snapshot.expiresAt &&
+      !hasAuthorizationExpired(snapshot.expiresAt)
+  );
+}
+
 function getLocalHostDisconnectAuthorization(
   options: AgentShellRuntimeOptions,
   sessionState: AgentShellSessionState
-): RuntimeAuthorizationSnapshot {
+): VisibleRuntimeAuthorizationSnapshot {
   if (options.role !== "host") {
     throw new Error(AGENT_SHELL_LOCAL_DISCONNECT_ROLE_ERROR_MESSAGE);
   }
@@ -2278,7 +2501,7 @@ function getLocalHostDisconnectAuthorization(
 
 function hasLocalHostDisconnectAuthorization(
   snapshot: RuntimeAuthorizationSnapshot | undefined
-): snapshot is RuntimeAuthorizationSnapshot {
+): snapshot is VisibleRuntimeAuthorizationSnapshot {
   return Boolean(
     snapshot &&
       snapshot.visibleToHost &&
@@ -2286,6 +2509,12 @@ function hasLocalHostDisconnectAuthorization(
       snapshot.expiresAt &&
       !hasAuthorizationExpired(snapshot.expiresAt)
   );
+}
+
+function assertLocalRuntimeSocketOpen(socket: WebSocket): void {
+  if (socket.readyState !== WebSocket.OPEN) {
+    throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
+  }
 }
 
 function closeLocalHostConnection(
