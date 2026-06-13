@@ -114,11 +114,11 @@ function handleViewerControlLine(
     return;
   }
 
-  stopPrompt();
   Promise.resolve()
     .then(() => runtime.leave())
     .then(() => {
       output.write(`${VIEWER_CONTROL_ACCEPTED_PREFIX} action=disconnect\n`);
+      stopPrompt();
     })
     .catch((error: unknown) => {
       output.write(`${formatAgentShellCliError(error)}\n`);
