@@ -238,7 +238,7 @@ The relay CLI SHALL start the managed relay runtime with environment-derived hea
 - **THEN** the runtime enables development heartbeat defaults
 
 ### Requirement: Development pairing ticket runtime configuration
-The relay runtime SHALL allow development pairing ticket TTL and maximum-use settings to be configured for tests and local execution, and SHALL reject malformed or unsafe environment-derived or injected pairing ticket configuration before opening a listener, accepting peer connections, or creating pairing tickets.
+The relay runtime SHALL allow development pairing ticket TTL and maximum-use settings to be configured for tests and local execution, and SHALL reject malformed or unsafe environment-derived or injected pairing ticket configuration before opening a listener, accepting peer connections, or creating pairing tickets. Validated pairing ticket configuration SHALL be represented as a fresh immutable snapshot before use so caller mutations after validation cannot change ticket TTL or maximum-use behavior.
 
 #### Scenario: Runtime uses injected pairing settings
 - **WHEN** tests create the relay runtime with explicit pairing ticket TTL and maximum-use settings
@@ -259,6 +259,16 @@ The relay runtime SHALL allow development pairing ticket TTL and maximum-use set
 #### Scenario: Unsafe injected pairing settings are rejected
 - **WHEN** tests create the relay runtime or room registry with non-number, non-finite, non-integer, negative, null, zero-use, or out-of-range pairing ticket settings
 - **THEN** the runtime rejects configuration before creating host pairing tickets
+
+#### Scenario: Normalized pairing configuration is immutable
+- **WHEN** caller code normalizes safe pairing settings and then tries to mutate the returned config object
+- **THEN** the validated TTL and maximum-use fields remain unchanged
+- **AND** the mutation MUST NOT create unsafe ticket behavior, grant permissions, start capture, send input, suppress host visibility, or bypass consent workflows
+
+#### Scenario: Room registry snapshots injected pairing configuration
+- **WHEN** caller code constructs a room registry with safe injected pairing settings and later mutates the original config object before host pairing ticket creation
+- **THEN** host-created pairing tickets use the validated values captured during registry construction
+- **AND** the later mutation MUST NOT extend or shorten ticket TTL, change maximum-use behavior, approve sessions, grant permissions, start capture, send input, suppress host visibility, or bypass consent workflows
 
 ### Requirement: Pairing lifecycle audit safety
 The relay runtime SHALL emit secret-safe audit events for pairing ticket creation, consumption, and denied pairing joins.

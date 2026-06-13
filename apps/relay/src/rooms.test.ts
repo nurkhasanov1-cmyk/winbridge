@@ -312,6 +312,67 @@ describe("RoomRegistry", () => {
     }
   });
 
+  it("returns an immutable pairing config snapshot", () => {
+    const originalConfig: RelayPairingConfig = {
+      ticketTtlMs: 1000,
+      maxUses: 2
+    };
+
+    const normalizedConfig = normalizeRelayPairingConfig(originalConfig);
+    originalConfig.ticketTtlMs = 0;
+    originalConfig.maxUses = 10;
+
+    expect(normalizedConfig).toMatchObject({
+      ticketTtlMs: 1000,
+      maxUses: 2
+    });
+    expect(Object.isFrozen(normalizedConfig)).toBe(true);
+
+    try {
+      normalizedConfig.ticketTtlMs = 60_000;
+      normalizedConfig.maxUses = 10;
+    } catch (error) {
+      expect(error).toBeInstanceOf(TypeError);
+    }
+
+    expect(normalizedConfig).toMatchObject({
+      ticketTtlMs: 1000,
+      maxUses: 2
+    });
+  });
+
+  it("uses a validated pairing snapshot after caller mutates injected config", () => {
+    let now = new Date("2026-06-14T00:00:00.000Z");
+    const pairingConfig: RelayPairingConfig = {
+      ticketTtlMs: 100,
+      maxUses: 2,
+      now: () => now
+    };
+    const rooms = new RoomRegistry(pairingConfig);
+
+    pairingConfig.ticketTtlMs = 0;
+    pairingConfig.maxUses = 1;
+    pairingConfig.now = () => new Date("2026-06-14T00:01:00.000Z");
+
+    rooms.join(joinPeer({ peerId: "host-1", role: "host" }));
+    now = new Date("2026-06-14T00:00:00.050Z");
+    expect(
+      rooms.join(joinPeer({ peerId: "viewer-1", role: "viewer", deviceId: "dev_viewer_1" }))
+    ).toMatchObject({
+      ticketConsumed: true,
+      ticketRemainingUses: 1
+    });
+
+    rooms.leave("session-demo", "viewer-1");
+    now = new Date("2026-06-14T00:00:00.060Z");
+    expect(
+      rooms.join(joinPeer({ peerId: "viewer-2", role: "viewer", deviceId: "dev_viewer_2" }))
+    ).toMatchObject({
+      ticketConsumed: true,
+      ticketRemainingUses: 0
+    });
+  });
+
   it("removes empty rooms", () => {
     const rooms = new RoomRegistry();
 

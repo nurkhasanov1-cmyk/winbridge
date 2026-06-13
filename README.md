@@ -126,7 +126,7 @@ npm run dev:relay
 ```
 
 The host should join before the viewer. Pairing only admits a distinct viewer device to the relay room; it does not grant screen, input, clipboard, file, or diagnostic permissions.
-Pairing ticket TTL values must be exact integer milliseconds from `0` through `86400000`; maximum uses must be an exact integer from `1` through `10`.
+Pairing ticket TTL values must be exact integer milliseconds from `0` through `86400000`; maximum uses must be an exact integer from `1` through `10`. Runtime-injected pairing settings are validated into an immutable snapshot before tickets are created.
 
 In separate terminals, exercise the protocol:
 

@@ -57,10 +57,10 @@ export class RoomRegistry {
 
   constructor(pairingConfig: Partial<RelayPairingConfig> = {}) {
     const normalizedPairingConfig = normalizeRelayPairingConfig(pairingConfig);
-    this.pairingConfig = {
+    this.pairingConfig = Object.freeze({
       ...normalizedPairingConfig,
       now: normalizedPairingConfig.now ?? (() => new Date())
-    };
+    });
   }
 
   join(peer: RelayPeerJoin): RelayJoinResult {
@@ -214,11 +214,11 @@ export function normalizeRelayPairingConfig(
     MAX_RELAY_PAIRING_TICKET_MAX_USES
   );
 
-  return {
+  return Object.freeze({
     ticketTtlMs,
     maxUses,
     now: config.now
-  };
+  });
 }
 
 function assertBoundedInteger(
