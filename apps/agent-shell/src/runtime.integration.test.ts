@@ -213,6 +213,11 @@ describe("agent shell consent workflow", () => {
         "Runtime requested permissions"
       ],
       [
+        "diagnostics requested permission",
+        { requestedPermissions: ["diagnostics:view" as Permission] },
+        "Runtime requested permissions"
+      ],
+      [
         "duplicate requested permission",
         { requestedPermissions: ["screen:view", "screen:view"] },
         "Runtime requested permissions"
@@ -258,6 +263,11 @@ describe("agent shell consent workflow", () => {
         "Runtime host grant scope"
       ],
       [
+        "diagnostics host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: ["diagnostics:view" as Permission] },
+        "Runtime host grant scope"
+      ],
+      [
         "viewer host grant scope",
         {
           role: "viewer",
@@ -297,6 +307,11 @@ describe("agent shell consent workflow", () => {
       [
         "file-transfer revoke permission",
         { hostRevokePermission: "file-transfer" },
+        "Runtime revoke permission"
+      ],
+      [
+        "diagnostics revoke permission",
+        { hostRevokePermission: "diagnostics:view" as Permission },
         "Runtime revoke permission"
       ],
       [

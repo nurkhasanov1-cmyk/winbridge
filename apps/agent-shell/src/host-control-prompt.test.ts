@@ -38,6 +38,7 @@ describe("interactive host control prompt", () => {
       "Pause",
       "revoke",
       "revoke ",
+      "revoke diagnostics:view",
       "revoke file-transfer",
       "revoke input:keylogger",
       "revoke screen:view raw-token",
@@ -206,6 +207,7 @@ describe("interactive host control prompt", () => {
       " help\n",
       "Help\n",
       " pause\n",
+      "revoke diagnostics:view\n",
       "revoke input:keylogger\n",
       "disconnect raw-token\n",
       "help raw-token\n",
@@ -213,7 +215,7 @@ describe("interactive host control prompt", () => {
     ]);
 
     startInteractiveHostControlPrompt(runtime, { input, output });
-    await waitForText(output, (text) => countMatches(text, "host control rejected") === 7);
+    await waitForText(output, (text) => countMatches(text, "host control rejected") === 8);
 
     expect(runtime.getHostStatus).not.toHaveBeenCalled();
     expect(runtime.pause).not.toHaveBeenCalled();
@@ -222,6 +224,7 @@ describe("interactive host control prompt", () => {
     expect(runtime.terminate).not.toHaveBeenCalled();
     expect(runtime.disconnect).not.toHaveBeenCalled();
     expect(runtime.leave).not.toHaveBeenCalled();
+    expect(output.text()).not.toContain("diagnostics:view");
     expect(output.text()).not.toContain("input:keylogger");
     expect(output.text()).not.toContain("raw-token");
   });
