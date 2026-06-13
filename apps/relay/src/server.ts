@@ -317,12 +317,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
             rateLimit: rateLimitAuditDetail(decision)
           }
         });
-        socket.send(
-          stringifyJson({
-            type: "relay-error",
-            reason
-          })
-        );
+        sendRelayError(socket, reason);
         if (!decision.allowed) {
           socket.close(1008, "Relay message rate limit exceeded");
         }
@@ -503,6 +498,24 @@ function websocketErrorReason(error: Error): string | undefined {
   }
 
   return undefined;
+}
+
+function sendRelayError(socket: WebSocket, reason: string): void {
+  if (socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  try {
+    socket.send(
+      stringifyJson({
+        type: "relay-error",
+        reason
+      })
+    );
+  } catch {
+    // Peer-facing relay-error delivery is best-effort; audit and rate-limit
+    // accounting already happened before this transport write.
+  }
 }
 
 function safeRelayRejectionReason(error: unknown): string {

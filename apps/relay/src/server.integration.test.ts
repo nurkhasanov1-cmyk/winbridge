@@ -19,7 +19,7 @@ import {
   type RelayRuntime,
   type RelayRuntimeOptions
 } from "./server.js";
-import { RoomRegistry, SAME_ROLE_RELAY_PEER_JOIN_REASON } from "./rooms.js";
+import { RoomRegistry, SAME_ROLE_RELAY_PEER_JOIN_REASON, type RelayPeerJoin } from "./rooms.js";
 
 const runtimes: RelayRuntime[] = [];
 const silentLogger = {
@@ -39,6 +39,13 @@ class RaceWindowRoomRegistry extends RoomRegistry {
         close: () => undefined
       }))
     };
+  }
+}
+
+class ClosingJoinRejectionRoomRegistry extends RoomRegistry {
+  override join(peer: RelayPeerJoin) {
+    peer.close(1008, "Host pairing ticket required");
+    throw new Error("Host pairing ticket required");
   }
 }
 
@@ -3979,6 +3986,82 @@ describe("relay runtime integration", () => {
     host.send("not-json-again");
 
     expect(await waitForClose(host)).toMatchObject({ code: 1008 });
+  });
+
+  it("audits rejected messages when relay-error cannot be sent to a closing socket", async () => {
+    const auditSink = new MemoryAuditSink();
+    const originalSend = WebSocket.prototype.send;
+    const callOriginalSend = originalSend as unknown as (
+      this: WebSocket,
+      data: unknown,
+      ...args: unknown[]
+    ) => void;
+    let relayErrorSendAttemptedOnClosingSocket = false;
+
+    WebSocket.prototype.send = function patchedSend(
+      this: WebSocket,
+      data: unknown,
+      ...args: unknown[]
+    ) {
+      if (
+        typeof data === "string" &&
+        data.includes("\"relay-error\"") &&
+        this.readyState !== WebSocket.OPEN
+      ) {
+        relayErrorSendAttemptedOnClosingSocket = true;
+        throw new Error("simulated closed relay-error transport");
+      }
+
+      return callOriginalSend.call(this, data, ...args);
+    } as WebSocket["send"];
+
+    try {
+      const runtime = await startRuntime({
+        auditSink,
+        rooms: new ClosingJoinRejectionRoomRegistry()
+      });
+      const host = await openSocket(runtime.url());
+
+      host.send(joinMessage("session-demo", "host-1", "host", "123-456"));
+
+      expect(await waitForClose(host)).toMatchObject({ code: 1008 });
+      expect(relayErrorSendAttemptedOnClosingSocket).toBe(false);
+
+      const deniedJoin = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.peer.join.denied"
+      );
+      const rejectedMessage = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.message.rejected"
+      );
+
+      expect(deniedJoin).toMatchObject({
+        action: "relay.peer.join.denied",
+        outcome: "denied",
+        reason: "Host pairing ticket required",
+        sessionId: "session-demo",
+        actor: {
+          id: "development-relay:host-1"
+        }
+      });
+      expect(rejectedMessage).toMatchObject({
+        action: "relay.message.rejected",
+        outcome: "failed",
+        reason: "Host pairing ticket required",
+        detail: {
+          registered: false,
+          rateLimit: {
+            allowed: true,
+            limit: 5,
+            remaining: 4
+          }
+        }
+      });
+      expect(JSON.stringify([deniedJoin, rejectedMessage])).not.toContain("123-456");
+    } finally {
+      WebSocket.prototype.send = originalSend;
+    }
   });
 
   it("terminates and audits a registered peer after heartbeat timeout", async () => {
