@@ -94,6 +94,16 @@ describe("agent shell arguments", () => {
     ).toBe(1000);
   });
 
+  it("parses viewer status print mode for viewer runtimes without requested permissions", () => {
+    expect(parseArgs(["viewer", "--viewer-status-after-ms", "0"], {}, 42).viewerStatusAfterMs).toBe(
+      0
+    );
+    expect(
+      parseArgs(["viewer", "--viewer-status-after-ms", "2147483647"], {}, 42)
+        .viewerStatusAfterMs
+    ).toBe(2147483647);
+  });
+
   it("parses absolute websocket relay urls", () => {
     expect(parseArgs(["viewer", "--relay", "ws://127.0.0.1:8787"], {}, 42).relayUrl).toBe(
       "ws://127.0.0.1:8787/"
@@ -175,6 +185,14 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("rejects malformed viewer status delay values", () => {
+    for (const delayMs of ["-1", "1.5", "Infinity", "01", "2147483648"]) {
+      expect(() =>
+        parseArgs(["viewer", "--viewer-status-after-ms", delayMs], {}, 42)
+      ).toThrow(AgentShellUsageError);
+    }
+  });
+
   it("rejects interactive host consent prompt for viewer or static decisions", () => {
     expect(() => parseArgs(["viewer", "--host-consent-prompt", "true"], {}, 42)).toThrow(
       AgentShellUsageError
@@ -226,6 +244,12 @@ describe("agent shell arguments", () => {
         42
       )
     ).toThrow(AgentShellUsageError);
+  });
+
+  it("rejects viewer status print mode for host runtimes", () => {
+    expect(() => parseArgs(["host", "--viewer-status-after-ms", "0"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
   });
 
   it("rejects malformed host consent timeout values", () => {

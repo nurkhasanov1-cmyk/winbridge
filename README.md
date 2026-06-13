@@ -191,6 +191,14 @@ Host control prompt mode accepts exact commands: `status`, `pause`, `resume`, `r
 
 Managed viewer runtimes also expose a read-only `getViewerStatus()` snapshot for future viewer UI wiring. It reports only bounded lifecycle metadata such as `state`, `visibleToHost`, `permissionCount`, and optional authorization id/status. It is viewer-only and does not send protocol messages, emit workflow audit events, grant permissions, start signaling, or invoke host controls.
 
+Print that bounded viewer-side local status snapshot from the development CLI:
+
+```powershell
+npm run dev:agent -- viewer --session demo --pairing 123-456 --viewer-status-after-ms 1000
+```
+
+`--viewer-status-after-ms` is viewer-only, accepts an exact integer delay from `0` through `2147483647`, and does not require requested permissions. It reads only local viewer status and does not start signaling, send protocol messages, emit workflow audit events, grant permissions, or invoke host controls.
+
 Persist development host workflow audit records as JSONL:
 
 ```powershell
