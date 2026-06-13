@@ -2795,10 +2795,12 @@ describe("agent shell consent workflow", () => {
     expect(statusAfterLeave).toEqual({
       state: "inactive",
       visibleToHost: false,
-      permissionCount: 0
+      permissionCount: 0,
+      localInactiveCause: "local-leave"
     });
     expect(statusAfterLeave).not.toHaveProperty("authorizationId");
     expect(statusAfterLeave).not.toHaveProperty("authorizationStatus");
+    expect(statusAfterLeave).not.toHaveProperty("remoteDisconnectReasonCode");
     expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
       viewerSentBeforeLeave
     );
@@ -2808,6 +2810,31 @@ describe("agent shell consent workflow", () => {
     expect(viewerEvents.some((event) => event.direction === "sent" && event.message.type === "audit-event")).toBe(
       false
     );
+  });
+
+  it("clears viewer local inactive cause on ordinary stop", async () => {
+    const viewer = createAgentShellRuntime(createRuntimeOptions({
+      role: "viewer",
+      peerId: "viewer-local-leave",
+      displayName: "Viewer",
+      deviceId: "dev_viewer_local_leave",
+      logger: silentLogger
+    }));
+
+    await viewer.leave();
+    expect(viewer.getViewerStatus()).toEqual({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0,
+      localInactiveCause: "local-leave"
+    });
+
+    await viewer.stop();
+    expect(viewer.getViewerStatus()).toEqual({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0
+    });
   });
 
   it("reports invisible or denied viewer status as inactive", async () => {

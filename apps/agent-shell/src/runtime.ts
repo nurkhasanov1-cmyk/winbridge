@@ -175,6 +175,8 @@ export type AgentShellRemoteDisconnectReasonCode = Extract<
   { type: "peer-disconnected" }
 >["reasonCode"];
 
+export type AgentShellViewerLocalInactiveCause = "local-leave";
+
 export type AgentShellViewerStatusSnapshot = {
   state: AgentShellHostIndicatorEvent["state"];
   visibleToHost: boolean;
@@ -182,6 +184,7 @@ export type AgentShellViewerStatusSnapshot = {
   authorizationId?: string;
   authorizationStatus?: SessionAuthorizationStatus;
   remoteDisconnectReasonCode?: AgentShellRemoteDisconnectReasonCode;
+  localInactiveCause?: AgentShellViewerLocalInactiveCause;
 };
 
 export const MAX_AGENT_SHELL_REASON_LENGTH = 240;
@@ -289,6 +292,7 @@ type AgentShellSessionState = {
   hostAuthorization?: RuntimeAuthorizationSnapshot;
   hostWorkflowState?: HostWorkflowState;
   viewerAuthorization?: RuntimeAuthorizationSnapshot;
+  viewerLocalInactiveCause?: AgentShellViewerLocalInactiveCause;
   viewerSignalProbeAuthorizationId?: string;
   viewerSignalProbeGeneration: number;
   hostSignalProbeAckAuthorizationId?: string;
@@ -428,6 +432,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
       }
 
       await stopRuntime();
+      sessionState.viewerLocalInactiveCause = "local-leave";
     },
 
     getHostStatus() {
@@ -650,6 +655,7 @@ function resetConnectionScopedSessionState(sessionState: AgentShellSessionState)
   sessionState.hostAuthorization = undefined;
   sessionState.hostWorkflowState = undefined;
   sessionState.viewerAuthorization = undefined;
+  sessionState.viewerLocalInactiveCause = undefined;
   sessionState.viewerSignalProbeAuthorizationId = undefined;
   sessionState.viewerSignalProbeGeneration = 0;
   sessionState.hostSignalProbeAckAuthorizationId = undefined;
@@ -1890,7 +1896,10 @@ function getViewerStatusSnapshot(
     return {
       state: "inactive",
       visibleToHost: false,
-      permissionCount: 0
+      permissionCount: 0,
+      ...(sessionState.viewerLocalInactiveCause
+        ? { localInactiveCause: sessionState.viewerLocalInactiveCause }
+        : {})
     };
   }
 

@@ -32,6 +32,10 @@ export function formatViewerStatus(status: AgentShellViewerStatusSnapshot): stri
     parts.push(`remoteDisconnectReasonCode=${status.remoteDisconnectReasonCode}`);
   }
 
+  if (status.localInactiveCause) {
+    parts.push(`localInactiveCause=${status.localInactiveCause}`);
+  }
+
   return `${parts.join(" ")}\n`;
 }
 

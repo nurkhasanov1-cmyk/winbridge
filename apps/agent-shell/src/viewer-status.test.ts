@@ -46,6 +46,24 @@ describe("viewer status print", () => {
     expect(formatted).not.toContain("raw-token");
   });
 
+  it("formats local leave inactive cause without authorization metadata", () => {
+    const formatted = formatViewerStatus({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0,
+      localInactiveCause: "local-leave"
+    });
+
+    expect(formatted).toBe(
+      "[winbridge-agent] viewer status state=inactive visibleToHost=false permissionCount=0 localInactiveCause=local-leave\n"
+    );
+    expect(formatted).not.toContain("authorizationId");
+    expect(formatted).not.toContain("authorizationStatus");
+    expect(formatted).not.toContain("remoteDisconnectReasonCode");
+    expect(formatted).not.toContain("host-1");
+    expect(formatted).not.toContain("raw-token");
+  });
+
   it("prints viewer status after the configured delay without invoking controls or public sends", async () => {
     vi.useFakeTimers();
     try {

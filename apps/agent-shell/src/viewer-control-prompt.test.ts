@@ -105,6 +105,42 @@ describe("interactive viewer control prompt", () => {
     expect(output.text()).not.toContain("raw-token");
   });
 
+  it("prints bounded local inactive cause in viewer status", async () => {
+    const runtime = createRuntimeSpy();
+    vi.mocked(runtime.getViewerStatus).mockReturnValue({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0,
+      localInactiveCause: "local-leave"
+    });
+    const output = createCapturingOutput();
+
+    startInteractiveViewerControlPrompt(runtime, {
+      input: PassThrough.from(["status\n"]),
+      output
+    });
+    await waitForText(output, (text) => text.includes("localInactiveCause=local-leave"));
+
+    expect(runtime.getViewerStatus).toHaveBeenCalledTimes(1);
+    expect(runtime.leave).not.toHaveBeenCalled();
+    expect(runtime.stop).not.toHaveBeenCalled();
+    expect(runtime.getHostStatus).not.toHaveBeenCalled();
+    expect(runtime.pause).not.toHaveBeenCalled();
+    expect(runtime.resume).not.toHaveBeenCalled();
+    expect(runtime.revokePermission).not.toHaveBeenCalled();
+    expect(runtime.terminate).not.toHaveBeenCalled();
+    expect(runtime.disconnect).not.toHaveBeenCalled();
+    expect(runtime.send).not.toHaveBeenCalled();
+    expect(output.text()).toContain("state=inactive");
+    expect(output.text()).toContain("visibleToHost=false");
+    expect(output.text()).toContain("permissionCount=0");
+    expect(output.text()).not.toContain("authorizationId=");
+    expect(output.text()).not.toContain("authorizationStatus=");
+    expect(output.text()).not.toContain("remoteDisconnectReasonCode=");
+    expect(output.text()).not.toContain("host-1");
+    expect(output.text()).not.toContain("raw-token");
+  });
+
   it("prints viewer help without reading status, leaving, invoking host controls, or public sends", async () => {
     const runtime = createRuntimeSpy();
     const output = createCapturingOutput();
