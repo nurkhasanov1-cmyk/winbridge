@@ -151,6 +151,15 @@ The prompt accepts only exact `approve` or `deny` responses before the host cons
 
 This still does not capture the screen or send input. It only sends session authorization protocol messages and local secret-safe host indicator events for development UI wiring. Signaling payloads must be JSON-compatible objects; JavaScript-only values that JSON would drop or coerce are rejected before forwarding.
 
+Use the development host control prompt to invoke immediate local controls from the host terminal:
+
+```powershell
+npm run dev:agent -- host --session demo --pairing 123-456 --host-decision approve --visible-session true --host-control-prompt true
+npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view,input:pointer
+```
+
+Host control prompt mode accepts exact commands: `pause`, `resume`, `revoke screen:view`, `terminate`, and `disconnect`. It is host-only and mutually exclusive with `--host-consent-prompt true` so only one stdin prompt is active. Commands call the same managed runtime controls as tests, so invisible sessions, expired grants, terminal sessions, disconnected peers, and missing permissions still fail closed before lifecycle protocol messages.
+
 Persist development host workflow audit records as JSONL:
 
 ```powershell

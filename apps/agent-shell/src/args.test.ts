@@ -24,6 +24,7 @@ describe("agent shell arguments", () => {
       requestedPermissions: [],
       hostDecision: "none",
       hostConsentPrompt: false,
+      hostControlPrompt: false,
       visibleToHost: false
     });
   });
@@ -49,6 +50,11 @@ describe("agent shell arguments", () => {
     expect(parseArgs(["host", "--host-consent-prompt", "false"], {}, 42).hostConsentPrompt).toBe(
       false
     );
+  });
+
+  it("parses interactive host control prompt mode for host runtimes", () => {
+    expect(parseArgs(["host", "--host-control-prompt", "true"], {}, 42).hostControlPrompt).toBe(true);
+    expect(parseArgs(["host", "--host-control-prompt", "false"], {}, 42).hostControlPrompt).toBe(false);
   });
 
   it("parses absolute websocket relay urls", () => {
@@ -106,6 +112,12 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects malformed interactive host control prompt values", () => {
+    expect(() => parseArgs(["host", "--host-control-prompt", "yes"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+  });
+
   it("rejects interactive host consent prompt for viewer or static decisions", () => {
     expect(() => parseArgs(["viewer", "--host-consent-prompt", "true"], {}, 42)).toThrow(
       AgentShellUsageError
@@ -115,6 +127,22 @@ describe("agent shell arguments", () => {
     ).toThrow(AgentShellUsageError);
     expect(() =>
       parseArgs(["host", "--host-consent-prompt", "true", "--host-decision", "deny"], {}, 42)
+    ).toThrow(AgentShellUsageError);
+  });
+
+  it("rejects interactive host control prompt for viewer or concurrent consent prompt", () => {
+    expect(() => parseArgs(["viewer", "--host-control-prompt", "true"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() => parseArgs(["viewer", "--host-control-prompt", "false"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() =>
+      parseArgs(
+        ["host", "--host-control-prompt", "true", "--host-consent-prompt", "true"],
+        {},
+        42
+      )
     ).toThrow(AgentShellUsageError);
   });
 

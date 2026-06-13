@@ -2,10 +2,12 @@ import { FileAuditSink } from "@winbridge/audit-log";
 import { parseArgs } from "./args.js";
 import { reportAgentShellCliError } from "./cli-diagnostics.js";
 import { createInteractiveHostDecisionProvider } from "./host-consent-prompt.js";
+import { startInteractiveHostControlPrompt, type HostControlPromptHandle } from "./host-control-prompt.js";
 import { createAgentShellRuntime } from "./runtime.js";
 
 try {
   const args = parseArgs(process.argv.slice(2));
+  let hostControlPrompt: HostControlPromptHandle | undefined;
   const runtime = createAgentShellRuntime({
     ...args,
     hostDecisionProvider: args.hostConsentPrompt
@@ -15,6 +17,7 @@ try {
   });
 
   const shutdown = async () => {
+    hostControlPrompt?.stop();
     await runtime.stop();
   };
 
@@ -36,10 +39,17 @@ try {
       });
   });
 
-  runtime.start().catch((error) => {
-    reportAgentShellCliError(error);
-    process.exit(1);
-  });
+  runtime
+    .start()
+    .then(() => {
+      if (args.hostControlPrompt) {
+        hostControlPrompt = startInteractiveHostControlPrompt(runtime);
+      }
+    })
+    .catch((error) => {
+      reportAgentShellCliError(error);
+      process.exit(1);
+    });
 } catch (error) {
   reportAgentShellCliError(error);
   process.exit(1);
