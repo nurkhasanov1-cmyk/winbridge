@@ -151,6 +151,15 @@ The prompt accepts only exact `approve` or `deny` responses before the host cons
 
 This still does not capture the screen or send input. It only sends session authorization protocol messages and local secret-safe host indicator events for development UI wiring. Signaling payloads must be JSON-compatible objects; JavaScript-only values that JSON would drop or coerce are rejected before forwarding.
 
+Exercise the consent-bound development signal path with a static viewer probe:
+
+```powershell
+npm run dev:agent -- host --session demo --pairing 123-456 --host-decision approve --visible-session true
+npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view --viewer-signal-probe-after-ms 1000
+```
+
+The viewer signal probe is viewer-only and requires an explicit `screen:view` request. It sends one static `signal` payload only after the viewer observes active visible `screen:view` authorization, and it uses the same runtime signal gates as tests. Pause, revoke, termination, expiration, local disconnect, remote disconnect, invisible approval, or missing `screen:view` prevents the probe before a local sent event or socket write. The probe does not include SDP, ICE candidates, user-provided JSON, screen contents, input, clipboard data, file-transfer data, diagnostics data, tokens, pairing codes, or display names.
+
 Use the development host control prompt to invoke immediate local controls from the host terminal:
 
 ```powershell

@@ -57,6 +57,23 @@ describe("agent shell arguments", () => {
     expect(parseArgs(["host", "--host-control-prompt", "false"], {}, 42).hostControlPrompt).toBe(false);
   });
 
+  it("parses viewer signal probe mode for screen-view viewer requests", () => {
+    expect(
+      parseArgs(
+        ["viewer", "--request", "screen:view", "--viewer-signal-probe-after-ms", "0"],
+        {},
+        42
+      ).viewerSignalProbeAfterMs
+    ).toBe(0);
+    expect(
+      parseArgs(
+        ["viewer", "--request", "screen:view,input:pointer", "--viewer-signal-probe-after-ms", "1000"],
+        {},
+        42
+      ).viewerSignalProbeAfterMs
+    ).toBe(1000);
+  });
+
   it("parses absolute websocket relay urls", () => {
     expect(parseArgs(["viewer", "--relay", "ws://127.0.0.1:8787"], {}, 42).relayUrl).toBe(
       "ws://127.0.0.1:8787/"
@@ -118,6 +135,18 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects malformed viewer signal probe delay values", () => {
+    for (const delayMs of ["-1", "1.5", "Infinity", "01", "2147483648"]) {
+      expect(() =>
+        parseArgs(
+          ["viewer", "--request", "screen:view", "--viewer-signal-probe-after-ms", delayMs],
+          {},
+          42
+        )
+      ).toThrow(AgentShellUsageError);
+    }
+  });
+
   it("rejects interactive host consent prompt for viewer or static decisions", () => {
     expect(() => parseArgs(["viewer", "--host-consent-prompt", "true"], {}, 42)).toThrow(
       AgentShellUsageError
@@ -140,6 +169,22 @@ describe("agent shell arguments", () => {
     expect(() =>
       parseArgs(
         ["host", "--host-control-prompt", "true", "--host-consent-prompt", "true"],
+        {},
+        42
+      )
+    ).toThrow(AgentShellUsageError);
+  });
+
+  it("rejects viewer signal probe for host runtimes or requests without screen view", () => {
+    expect(() => parseArgs(["host", "--viewer-signal-probe-after-ms", "0"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() =>
+      parseArgs(["viewer", "--viewer-signal-probe-after-ms", "0"], {}, 42)
+    ).toThrow(AgentShellUsageError);
+    expect(() =>
+      parseArgs(
+        ["viewer", "--request", "input:pointer", "--viewer-signal-probe-after-ms", "0"],
         {},
         42
       )

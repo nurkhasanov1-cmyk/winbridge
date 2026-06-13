@@ -199,6 +199,35 @@ describe("agent shell consent workflow", () => {
       ],
       ["zero authorization TTL", { authorizationTtlMs: 0 }, "Runtime authorization TTL"],
       ["unsafe workflow timer", { hostPauseAfterMs: 2_147_483_648 }, "Runtime workflow timer"],
+      [
+        "unsafe viewer signal probe timer",
+        {
+          role: "viewer",
+          peerId: "viewer-1",
+          displayName: "Viewer",
+          deviceId: "dev_viewer_1",
+          requestedPermissions: ["screen:view"],
+          viewerSignalProbeAfterMs: 2_147_483_648
+        },
+        "Runtime workflow timer"
+      ],
+      [
+        "host viewer signal probe",
+        { viewerSignalProbeAfterMs: 0 },
+        "Runtime viewer signal probe"
+      ],
+      [
+        "viewer signal probe without screen view",
+        {
+          role: "viewer",
+          peerId: "viewer-1",
+          displayName: "Viewer",
+          deviceId: "dev_viewer_1",
+          requestedPermissions: ["input:pointer"],
+          viewerSignalProbeAfterMs: 0
+        },
+        "Runtime viewer signal probe"
+      ],
       ["blank decision reason", { decisionReason: "   " }, "Runtime workflow reasons"],
       ["untrimmed decision reason", { decisionReason: " Host denied" }, "Runtime workflow reasons"],
       ["control-character decision reason", { decisionReason: "Host\ndenied" }, "Runtime workflow reasons"],
@@ -6654,6 +6683,245 @@ describe("agent shell consent workflow", () => {
     expect(JSON.stringify(receivedSignal)).not.toContain("authorized-viewer-signal-payload");
   });
 
+  it("sends viewer signal probe after active visible screen authorization and redacts payload contents", async () => {
+    const viewerLogs: string[] = [];
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(
+      relay.url(),
+      ["screen:view"],
+      viewerEvents,
+      captureLogger(viewerLogs),
+      undefined,
+      "Viewer",
+      { viewerSignalProbeAfterMs: 0 }
+    );
+
+    const authorizationId = await waitForReceivedActiveAuthorizationId(viewerEvents);
+    const signalPayload = {
+      authorizationId,
+      probe: "viewer-signal-probe-v1"
+    };
+    const sentSignal = await waitForSentMessage(
+      viewerEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "viewer-1"
+    );
+    const receivedSignal = await waitForMessage(
+      hostEvents,
+      (message) => message.type === "signal" && message.fromPeerId === "viewer-1"
+    );
+
+    expect(sentSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "viewer-1",
+      toPeerId: "host-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
+    expect(receivedSignal).toMatchObject({
+      type: "signal",
+      fromPeerId: "viewer-1",
+      toPeerId: "host-1",
+      payload: {
+        redacted: "[REDACTED]",
+        byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+      }
+    });
+    expect(JSON.stringify(sentSignal)).not.toContain("viewer-signal-probe-v1");
+    expect(JSON.stringify(receivedSignal)).not.toContain("viewer-signal-probe-v1");
+    expect(viewerLogs.join("\n")).not.toContain("viewer-signal-probe-v1");
+  });
+
+  it("withholds viewer signal probe before active visible authorization", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: false
+    });
+    await startViewer(
+      relay.url(),
+      ["screen:view"],
+      viewerEvents,
+      silentLogger,
+      undefined,
+      "Viewer",
+      { viewerSignalProbeAfterMs: 0 }
+    );
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-decision"
+    );
+    await delay(80);
+
+    expect(
+      viewerEvents.some((event) => event.direction === "sent" && event.message.type === "signal")
+    ).toBe(false);
+    expect(
+      hostEvents.some((event) => event.direction === "received" && event.message.type === "signal")
+    ).toBe(false);
+  });
+
+  it("skips viewer signal probe after lifecycle loss before the probe fires", async () => {
+    const scenarios: Array<{
+      name: string;
+      options: Parameters<typeof startRelayAndHost>[0];
+      waitForClosedState: (message: AgentShellReceivedProtocolEnvelope) => boolean;
+    }> = [
+      {
+        name: "revoke",
+        options: {
+          hostDecision: "approve",
+          hostRevokeAfterMs: 10,
+          hostRevokePermission: "screen:view",
+          visibleToHost: true
+        },
+        waitForClosedState: (message) => message.type === "permission-revoked"
+      },
+      {
+        name: "pause",
+        options: {
+          hostDecision: "approve",
+          hostPauseAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "paused"
+      },
+      {
+        name: "termination",
+        options: {
+          hostDecision: "approve",
+          hostTerminateAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "terminated"
+      },
+      {
+        name: "expiration",
+        options: {
+          authorizationTtlMs: 20,
+          hostDecision: "approve",
+          visibleToHost: true
+        },
+        waitForClosedState: (message) =>
+          message.type === "session-authorization-state" && message.status === "expired"
+      },
+      {
+        name: "disconnect",
+        options: {
+          hostDecision: "approve",
+          hostDisconnectAfterMs: 10,
+          visibleToHost: true
+        },
+        waitForClosedState: (message) => message.type === "peer-disconnected"
+      }
+    ];
+
+    for (const scenario of scenarios) {
+      const viewerLogs: string[] = [];
+      const { relay, hostEvents, viewerEvents } = await startRelayAndHost(scenario.options);
+      await startViewer(
+        relay.url(),
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs),
+        undefined,
+        "Viewer",
+        { viewerSignalProbeAfterMs: 80 }
+      );
+
+      await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.status === "active" &&
+          message.visibleToHost
+      );
+      await waitForMessage(viewerEvents, scenario.waitForClosedState);
+      await delay(130);
+
+      expect(
+        viewerEvents.filter((event) => event.direction === "sent" && event.message.type === "signal"),
+        scenario.name
+      ).toHaveLength(0);
+      expect(
+        hostEvents.filter((event) => event.direction === "received" && event.message.type === "signal"),
+        scenario.name
+      ).toHaveLength(0);
+      expect(JSON.stringify(viewerEvents), scenario.name).not.toContain("viewer-signal-probe-v1");
+      expect(viewerLogs.join("\n"), scenario.name).not.toContain("viewer-signal-probe-v1");
+    }
+  });
+
+  it("does not revive a pending viewer signal probe after pause and resume", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostPauseAfterMs: 10,
+      hostResumeAfterMs: 10,
+      visibleToHost: true
+    });
+    await startViewer(
+      relay.url(),
+      ["screen:view"],
+      viewerEvents,
+      silentLogger,
+      undefined,
+      "Viewer",
+      { viewerSignalProbeAfterMs: 80 }
+    );
+
+    await waitForReceivedMessageCount(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.visibleToHost,
+      2
+    );
+    await delay(130);
+
+    expect(
+      viewerEvents.filter((event) => event.direction === "sent" && event.message.type === "signal")
+    ).toHaveLength(0);
+    expect(
+      hostEvents.filter((event) => event.direction === "received" && event.message.type === "signal")
+    ).toHaveLength(0);
+    expect(JSON.stringify(viewerEvents)).not.toContain("viewer-signal-probe-v1");
+  });
+
+  it("cancels a pending viewer signal probe when the viewer runtime stops locally", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    const viewer = await startViewer(
+      relay.url(),
+      ["screen:view"],
+      viewerEvents,
+      silentLogger,
+      undefined,
+      "Viewer",
+      { viewerSignalProbeAfterMs: 80 }
+    );
+
+    await waitForReceivedActiveAuthorizationId(viewerEvents);
+    await viewer.stop();
+    await delay(130);
+
+    expect(
+      viewerEvents.filter((event) => event.direction === "sent" && event.message.type === "signal")
+    ).toHaveLength(0);
+    expect(
+      hostEvents.filter((event) => event.direction === "received" && event.message.type === "signal")
+    ).toHaveLength(0);
+    expect(JSON.stringify(viewerEvents)).not.toContain("viewer-signal-probe-v1");
+  });
+
   it("blocks host and viewer signal sends with missing or mismatched authorization ids", async () => {
     const hostLogs: string[] = [];
     const viewerLogs: string[] = [];
@@ -9864,7 +10132,8 @@ async function startViewer(
   viewerEvents: AgentShellEvent[] = [],
   logger: TestLogger = silentLogger,
   auditSink?: AuditSink,
-  displayName = "Viewer"
+  displayName = "Viewer",
+  options: Pick<AgentShellRuntimeOptions, "viewerSignalProbeAfterMs"> = {}
 ): Promise<AgentShellRuntime> {
   const viewer = createAgentShellRuntime({
     role: "viewer",
@@ -9875,6 +10144,7 @@ async function startViewer(
     displayName,
     deviceId: "dev_viewer_1",
     requestedPermissions,
+    viewerSignalProbeAfterMs: options.viewerSignalProbeAfterMs,
     auditSink,
     logger,
     onEvent: (event) => viewerEvents.push(event)

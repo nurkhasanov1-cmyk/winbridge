@@ -44,10 +44,11 @@ export type AgentShellArgs = {
   hostTerminateAfterMs?: number;
   hostTerminateReason?: string;
   hostDisconnectAfterMs?: number;
+  viewerSignalProbeAfterMs?: number;
 };
 
 export const AGENT_SHELL_USAGE =
-  "Usage: npm run dev:agent -- <host|viewer> [--relay ws://localhost:8787] [--session demo] [--pairing 123-456] [--peer peer-id] [--device device-id] [--name display-name] [--token token] [--audit-log logs\\agent-audit.jsonl] [--request screen:view,input:pointer] [--host-decision none|approve|deny] [--host-consent-prompt true|false] [--host-control-prompt true|false] [--host-consent-timeout-ms 60000] [--visible-session true|false] [--authorization-ttl-ms 600000] [--revoke-after-ms 1000] [--revoke-permission screen:view] [--revoke-reason reason] [--pause-after-ms 1000] [--pause-reason reason] [--resume-after-ms 1000] [--resume-reason reason] [--terminate-after-ms 1000] [--terminate-reason reason] [--disconnect-after-ms 1000]";
+  "Usage: npm run dev:agent -- <host|viewer> [--relay ws://localhost:8787] [--session demo] [--pairing 123-456] [--peer peer-id] [--device device-id] [--name display-name] [--token token] [--audit-log logs\\agent-audit.jsonl] [--request screen:view,input:pointer] [--host-decision none|approve|deny] [--host-consent-prompt true|false] [--host-control-prompt true|false] [--host-consent-timeout-ms 60000] [--visible-session true|false] [--authorization-ttl-ms 600000] [--revoke-after-ms 1000] [--revoke-permission screen:view] [--revoke-reason reason] [--pause-after-ms 1000] [--pause-reason reason] [--resume-after-ms 1000] [--resume-reason reason] [--terminate-after-ms 1000] [--terminate-reason reason] [--disconnect-after-ms 1000] [--viewer-signal-probe-after-ms 1000]";
 
 const knownOptions = new Set([
   "relay",
@@ -74,7 +75,8 @@ const knownOptions = new Set([
   "resume-reason",
   "terminate-after-ms",
   "terminate-reason",
-  "disconnect-after-ms"
+  "disconnect-after-ms",
+  "viewer-signal-probe-after-ms"
 ]);
 export class AgentShellUsageError extends Error {
   constructor() {
@@ -102,6 +104,12 @@ export function parseArgs(
   const hostDecision = parseHostDecision(options.get("host-decision"));
   const hostConsentPrompt = parseHostConsentPrompt(role, hostDecision, options.get("host-consent-prompt"));
   const hostControlPrompt = parseHostControlPrompt(role, hostConsentPrompt, options.get("host-control-prompt"));
+  const requestedPermissions = parseRequestedPermissions(options.get("request"));
+  const viewerSignalProbeAfterMs = parseViewerSignalProbeAfterMs(
+    role,
+    requestedPermissions,
+    options.get("viewer-signal-probe-after-ms")
+  );
 
   return {
     role,
@@ -115,7 +123,7 @@ export function parseArgs(
     auditLogPath: parseOptionalAuditLogPath(
       options.get("audit-log") ?? env.WINBRIDGE_AGENT_AUDIT_LOG_PATH
     ),
-    requestedPermissions: parseRequestedPermissions(options.get("request")),
+    requestedPermissions,
     hostDecision,
     hostConsentPrompt,
     hostControlPrompt,
@@ -134,7 +142,8 @@ export function parseArgs(
     hostResumeReason: parseOptionalReason(options.get("resume-reason")),
     hostTerminateAfterMs: parseOptionalTimerDelayMs(options.get("terminate-after-ms")),
     hostTerminateReason: parseOptionalReason(options.get("terminate-reason")),
-    hostDisconnectAfterMs: parseOptionalTimerDelayMs(options.get("disconnect-after-ms"))
+    hostDisconnectAfterMs: parseOptionalTimerDelayMs(options.get("disconnect-after-ms")),
+    viewerSignalProbeAfterMs
   };
 }
 
@@ -344,6 +353,23 @@ function parseHostConsentTimeoutMs(
   }
 
   return value;
+}
+
+function parseViewerSignalProbeAfterMs(
+  role: SessionRole,
+  requestedPermissions: Permission[],
+  raw: string | undefined
+): number | undefined {
+  const delayMs = parseOptionalTimerDelayMs(raw);
+  if (delayMs === undefined) {
+    return undefined;
+  }
+
+  if (role !== "viewer" || !requestedPermissions.includes("screen:view")) {
+    throw new AgentShellUsageError();
+  }
+
+  return delayMs;
 }
 
 function parseBooleanFlag(raw: string | undefined, defaultValue: boolean): boolean {

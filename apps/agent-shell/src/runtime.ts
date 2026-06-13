@@ -66,6 +66,7 @@ export type AgentShellRuntimeOptions = {
   hostTerminateAfterMs?: number;
   hostTerminateReason?: string;
   hostDisconnectAfterMs?: number;
+  viewerSignalProbeAfterMs?: number;
   auditSink?: AuditSink;
   logger?: {
     log(message: string): void;
@@ -178,6 +179,8 @@ const RUNTIME_AUTHORIZATION_TTL_ERROR_MESSAGE =
   "Runtime authorization TTL must be an integer from 1 through 2147483647";
 const RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE =
   "Runtime workflow timer delays must be integers from 0 through 2147483647";
+const RUNTIME_VIEWER_SIGNAL_PROBE_ERROR_MESSAGE =
+  "Runtime viewer signal probe requires a viewer runtime with requested screen:view permission";
 const AGENT_SHELL_RUNTIME_ERROR_MESSAGE = "Agent shell runtime error";
 const AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell local peer is disconnected";
 const AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell peer is disconnected";
@@ -215,6 +218,7 @@ const AGENT_SHELL_PUBLIC_SEND_RECIPIENT_ERROR_MESSAGE =
 const REDACTED_EVENT_VALUE = "[REDACTED]";
 const VALID_HOST_DECISIONS = new Set(["none", "approve", "deny"]);
 const SIGNAL_REQUIRED_PERMISSION: Permission = "screen:view";
+const VIEWER_SIGNAL_PROBE_MARKER = "viewer-signal-probe-v1";
 const TERMINAL_AUTHORIZATION_STATUSES = new Set<SessionAuthorizationStatus>([
   "denied",
   "revoked",
@@ -238,6 +242,8 @@ type AgentShellSessionState = {
   hostAuthorization?: RuntimeAuthorizationSnapshot;
   hostWorkflowState?: HostWorkflowState;
   viewerAuthorization?: RuntimeAuthorizationSnapshot;
+  viewerSignalProbeAuthorizationId?: string;
+  viewerSignalProbeGeneration: number;
   hostIndicator?: AgentShellHostIndicatorEvent;
 };
 
@@ -271,7 +277,8 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
     localPeerDisconnected: false,
     remotePeerDisconnected: false,
     recipientAvailable: false,
-    helloSent: false
+    helloSent: false,
+    viewerSignalProbeGeneration: 0
   };
 
   if (options.token) {
@@ -304,6 +311,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
       socket.on("close", (code, reason) => {
         const reasonBytes = closeReasonByteLength(reason);
         sessionState.localPeerDisconnected = true;
+        invalidateViewerSignalProbe(sessionState);
         deactivateHostIndicator(options, sessionState, "socket-closed");
         const event = { direction: "closed", code, reason: REDACTED_EVENT_VALUE, reasonBytes } as const;
         options.onEvent?.(event);
@@ -517,25 +525,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
     },
 
     send(message: ProtocolEnvelope) {
-      if (!socket) {
-        throw new Error("Agent shell runtime is not started");
-      }
-
-      if (sessionState.remotePeerDisconnected) {
-        throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
-      }
-
-      if (sessionState.localPeerDisconnected) {
-        throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
-      }
-
-      assertPublicSendSession(message, options);
-      assertPublicSendAuthority(message, options);
-      assertPublicWorkflowAuthoritySendAllowed(message);
-      assertSignalPeerRouting(message, options);
-      assertSignalSendAuthorized(message, options, sessionState);
-      assertPublicSendRecipientAvailable(message, sessionState);
-      sendProtocol(socket, options, message);
+      sendPublicRuntimeMessage(socket, options, sessionState, message);
     }
   };
 }
@@ -590,6 +580,8 @@ function resetConnectionScopedSessionState(sessionState: AgentShellSessionState)
   sessionState.hostAuthorization = undefined;
   sessionState.hostWorkflowState = undefined;
   sessionState.viewerAuthorization = undefined;
+  sessionState.viewerSignalProbeAuthorizationId = undefined;
+  sessionState.viewerSignalProbeGeneration = 0;
   sessionState.hostIndicator = undefined;
 }
 
@@ -682,12 +674,21 @@ async function handleMessage(
   try {
     updateViewerAuthorizationState(options, sessionState, envelope);
 
+    if (isViewerAuthorizationLifecycleMessage(envelope) && !hasActiveSignalAuthorization(sessionState.viewerAuthorization)) {
+      invalidateViewerSignalProbe(sessionState);
+    }
+
     if (envelope.type === "peer-disconnected") {
       sessionState.remotePeerDisconnected = true;
+      invalidateViewerSignalProbe(sessionState);
       sessionState.recipientAvailable = false;
       sessionState.observedPeerId = undefined;
       sessionState.observedPeerRole = undefined;
       deactivateHostIndicator(options, sessionState, "peer-disconnected");
+    }
+
+    if (envelope.type === "session-authorization-state") {
+      scheduleViewerSignalProbe(socket, options, sessionState, scheduleTimer);
     }
 
     if (envelope.type === "relay-ready" && envelope.roomSize >= 2) {
@@ -844,6 +845,15 @@ function isUntrustedViewerAuthorizationLifecycleMessage(
     default:
       return false;
   }
+}
+
+function isViewerAuthorizationLifecycleMessage(envelope: ProtocolEnvelope): boolean {
+  return (
+    envelope.type === "session-authorization-decision" ||
+    envelope.type === "session-authorization-state" ||
+    envelope.type === "permission-revoked" ||
+    envelope.type === "session-control"
+  );
 }
 
 function isUnboundHostAuthorizationRequest(
@@ -1152,6 +1162,33 @@ function applyViewerAuthorizationRevocationFloor(
   };
 }
 
+function sendPublicRuntimeMessage(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  message: ProtocolEnvelope
+): void {
+  if (!socket) {
+    throw new Error("Agent shell runtime is not started");
+  }
+
+  if (sessionState.remotePeerDisconnected) {
+    throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
+  }
+
+  if (sessionState.localPeerDisconnected) {
+    throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
+  }
+
+  assertPublicSendSession(message, options);
+  assertPublicSendAuthority(message, options);
+  assertPublicWorkflowAuthoritySendAllowed(message);
+  assertSignalPeerRouting(message, options);
+  assertSignalSendAuthorized(message, options, sessionState);
+  assertPublicSendRecipientAvailable(message, sessionState);
+  sendProtocol(socket, options, message);
+}
+
 function assertPublicSendSession(message: ProtocolEnvelope, options: AgentShellRuntimeOptions): void {
   if (message.sessionId !== options.sessionId) {
     throw new Error(AGENT_SHELL_SESSION_ROUTING_ERROR_MESSAGE);
@@ -1259,6 +1296,62 @@ function hasActiveSignalAuthorization(
       !hasAuthorizationExpired(snapshot.expiresAt) &&
       snapshot.permissions.includes(SIGNAL_REQUIRED_PERMISSION)
   );
+}
+
+function scheduleViewerSignalProbe(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  scheduleTimer: (callback: () => void, delayMs: number) => void
+): void {
+  if (options.viewerSignalProbeAfterMs === undefined || options.role !== "viewer") {
+    return;
+  }
+
+  const snapshot = sessionState.viewerAuthorization;
+  if (!hasActiveSignalAuthorization(snapshot)) {
+    return;
+  }
+
+  if (sessionState.viewerSignalProbeAuthorizationId === snapshot.authorizationId) {
+    return;
+  }
+
+  sessionState.viewerSignalProbeAuthorizationId = snapshot.authorizationId;
+  const generation = sessionState.viewerSignalProbeGeneration;
+  scheduleTimer(() => {
+    if (
+      sessionState.viewerSignalProbeGeneration !== generation ||
+      sessionState.viewerSignalProbeAuthorizationId !== snapshot.authorizationId
+    ) {
+      return;
+    }
+
+    sendViewerSignalProbe(socket, options, sessionState, snapshot.authorizationId, snapshot.remotePeerId);
+  }, options.viewerSignalProbeAfterMs);
+}
+
+function invalidateViewerSignalProbe(sessionState: AgentShellSessionState): void {
+  sessionState.viewerSignalProbeGeneration += 1;
+}
+
+function sendViewerSignalProbe(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  authorizationId: string,
+  remotePeerId: string | undefined
+): void {
+  sendPublicRuntimeMessage(socket, options, sessionState, {
+    ...createMessageBase(options.sessionId),
+    type: "signal",
+    fromPeerId: options.peerId,
+    toPeerId: remotePeerId,
+    payload: {
+      authorizationId,
+      probe: VIEWER_SIGNAL_PROBE_MARKER
+    }
+  });
 }
 
 function signalPayloadAuthorizationId(
@@ -1735,8 +1828,10 @@ function validateRuntimeOptions(options: AgentShellRuntimeOptions): URL {
     options.hostPauseAfterMs,
     options.hostResumeAfterMs,
     options.hostTerminateAfterMs,
-    options.hostDisconnectAfterMs
+    options.hostDisconnectAfterMs,
+    options.viewerSignalProbeAfterMs
   ]);
+  assertRuntimeViewerSignalProbe(options);
   assertRuntimeWorkflowReasons([
     options.decisionReason,
     options.hostRevokeReason,
@@ -1950,6 +2045,16 @@ function assertRuntimeWorkflowTimers(values: unknown[]): void {
     ) {
       throw new Error(RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE);
     }
+  }
+}
+
+function assertRuntimeViewerSignalProbe(options: AgentShellRuntimeOptions): void {
+  if (options.viewerSignalProbeAfterMs === undefined) {
+    return;
+  }
+
+  if (options.role !== "viewer" || !options.requestedPermissions?.includes(SIGNAL_REQUIRED_PERMISSION)) {
+    throw new Error(RUNTIME_VIEWER_SIGNAL_PROBE_ERROR_MESSAGE);
   }
 }
 
