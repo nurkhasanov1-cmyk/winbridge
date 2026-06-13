@@ -52,6 +52,7 @@ export type AgentShellRuntimeOptions = {
   token?: string;
   deviceId: string;
   requestedPermissions?: Permission[];
+  hostGrantPermissions?: Permission[];
   hostDecision?: HostDecision;
   hostDecisionProvider?: HostDecisionProvider;
   hostConsentTimeoutMs?: number;
@@ -170,6 +171,8 @@ const RUNTIME_DISPLAY_NAME_ERROR_MESSAGE =
   "Runtime display name must be non-blank, already trimmed, 120 characters or less, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls";
 const RUNTIME_IDENTIFIER_ERROR_MESSAGE = "Runtime protocol identifiers are invalid";
 const RUNTIME_PERMISSION_ERROR_MESSAGE = "Runtime requested permissions must be valid and unique";
+const RUNTIME_HOST_GRANT_SCOPE_ERROR_MESSAGE =
+  "Runtime host grant scope requires a host runtime with an approval source and unique non-empty permissions";
 const RUNTIME_RELAY_URL_ERROR_MESSAGE = "Runtime relay URL must be an absolute ws or wss URL";
 const RUNTIME_REVOKE_PERMISSION_ERROR_MESSAGE = "Runtime revoke permission must be valid";
 const RUNTIME_ROLE_ERROR_MESSAGE = "Runtime role must be host or viewer";
@@ -1495,11 +1498,6 @@ async function handleHostAuthorizationRequest(
     return;
   }
 
-  const workflowState: HostWorkflowState = {
-    paused: false,
-    permissions: [...request.requestedPermissions]
-  };
-
   switch (decision) {
     case "deny": {
       const authorizationId = `authz_${randomUUID()}`;
@@ -1537,6 +1535,16 @@ async function handleHostAuthorizationRequest(
       throw new Error(HOST_DECISION_ERROR_MESSAGE);
   }
 
+  const grantedPermissions = resolveHostGrantedPermissions(options, request);
+  if (!grantedPermissions) {
+    return;
+  }
+
+  const workflowState: HostWorkflowState = {
+    paused: false,
+    permissions: [...grantedPermissions]
+  };
+
   const authorizationId = `authz_${randomUUID()}`;
   const grantCreatedAt = new Date();
   const ttlMs = options.authorizationTtlMs ?? 10 * 60_000;
@@ -1550,7 +1558,7 @@ async function handleHostAuthorizationRequest(
     outcome: "accepted",
     detail: {
       requestedPermissionCount: request.requestedPermissions.length,
-      grantedPermissionCount: request.requestedPermissions.length
+      grantedPermissionCount: grantedPermissions.length
     }
   });
 
@@ -1559,7 +1567,7 @@ async function handleHostAuthorizationRequest(
     remotePeerId: request.viewerPeerId,
     status: "approved",
     visibleToHost: false,
-    permissions: request.requestedPermissions,
+    permissions: grantedPermissions,
     expiresAt
   });
   sendProtocol(socket, options, {
@@ -1569,7 +1577,7 @@ async function handleHostAuthorizationRequest(
     hostPeerId: options.peerId,
     viewerPeerId: request.viewerPeerId,
     decision: "approved",
-    grantedPermissions: request.requestedPermissions,
+    grantedPermissions,
     expiresAt
   });
   sendProtocol(socket, options, approvalAuditEvent);
@@ -1583,7 +1591,7 @@ async function handleHostAuthorizationRequest(
     action: "agent-shell.authorization.active",
     outcome: "accepted",
     detail: {
-      grantedPermissionCount: request.requestedPermissions.length,
+      grantedPermissionCount: grantedPermissions.length,
       visibleToHost: true
     }
   });
@@ -1592,7 +1600,7 @@ async function handleHostAuthorizationRequest(
     remotePeerId: request.viewerPeerId,
     status: "active",
     visibleToHost: true,
-    permissions: request.requestedPermissions,
+    permissions: grantedPermissions,
     expiresAt
   });
   sessionState.hostWorkflowState = workflowState;
@@ -1604,13 +1612,13 @@ async function handleHostAuthorizationRequest(
     actorPeerId: options.peerId,
     status: "active",
     visibleToHost: true,
-    permissions: request.requestedPermissions,
+    permissions: grantedPermissions,
     expiresAt
   });
   sendProtocol(socket, options, activeAuditEvent);
 
-  scheduleHostExpiration(socket, options, request, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
-  scheduleHostRevoke(socket, options, request, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
+  scheduleHostExpiration(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
+  scheduleHostRevoke(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   scheduleHostTerminate(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   scheduleHostPause(socket, options, authorizationId, expiresAt, workflowState, sessionState, scheduleTimer);
   scheduleHostDisconnect(socket, options, expiresAt, workflowState, sessionState, scheduleTimer);
@@ -1636,6 +1644,22 @@ function canSendHostAuthorizationDecision(
   }
 
   return true;
+}
+
+function resolveHostGrantedPermissions(
+  options: AgentShellRuntimeOptions,
+  request: Extract<ProtocolEnvelope, { type: "session-authorization-request" }>
+): Permission[] | undefined {
+  if (!options.hostGrantPermissions) {
+    return [...request.requestedPermissions];
+  }
+
+  if (options.hostGrantPermissions.some((permission) => !request.requestedPermissions.includes(permission))) {
+    options.logger?.log("[winbridge-agent] approval skipped because configured grant scope is not requested");
+    return undefined;
+  }
+
+  return [...options.hostGrantPermissions];
 }
 
 async function resolveHostDecision(
@@ -1870,6 +1894,34 @@ function assertRuntimeHostConsentTimeout(
   }
 }
 
+function assertRuntimeHostGrantPermissions(options: AgentShellRuntimeOptions): void {
+  if (options.hostGrantPermissions === undefined) {
+    return;
+  }
+
+  if (
+    options.role !== "host" ||
+    (options.hostDecision !== "approve" && options.hostDecisionProvider === undefined) ||
+    !Array.isArray(options.hostGrantPermissions) ||
+    options.hostGrantPermissions.length === 0 ||
+    options.hostGrantPermissions.length > 16
+  ) {
+    throw new Error(RUNTIME_HOST_GRANT_SCOPE_ERROR_MESSAGE);
+  }
+
+  try {
+    for (const permission of options.hostGrantPermissions) {
+      PermissionSchema.parse(permission);
+    }
+  } catch {
+    throw new Error(RUNTIME_HOST_GRANT_SCOPE_ERROR_MESSAGE);
+  }
+
+  if (new Set(options.hostGrantPermissions).size !== options.hostGrantPermissions.length) {
+    throw new Error(RUNTIME_HOST_GRANT_SCOPE_ERROR_MESSAGE);
+  }
+}
+
 function validateRuntimeOptions(options: AgentShellRuntimeOptions): URL {
   const relayUrl = parseRuntimeRelayUrl(options.relayUrl);
 
@@ -1883,6 +1935,7 @@ function validateRuntimeOptions(options: AgentShellRuntimeOptions): URL {
   assertValidHostDecision(options.hostDecision);
   assertRuntimeHostDecisionProvider(options);
   assertRuntimeHostConsentTimeout(options.hostConsentTimeoutMs, options.hostDecisionProvider);
+  assertRuntimeHostGrantPermissions(options);
   assertRuntimeAuthorizationTtl(options.authorizationTtlMs);
   assertRuntimeWorkflowTimers([
     options.hostRevokeAfterMs,
@@ -2152,7 +2205,6 @@ function assertRuntimeWorkflowReasons(values: unknown[]): void {
 function scheduleHostRevoke(
   socket: WebSocket | undefined,
   options: AgentShellRuntimeOptions,
-  request: Extract<ProtocolEnvelope, { type: "session-authorization-request" }>,
   authorizationId: string,
   expiresAt: string,
   workflowState: HostWorkflowState,
@@ -2168,8 +2220,8 @@ function scheduleHostRevoke(
     return;
   }
 
-  if (!request.requestedPermissions.includes(options.hostRevokePermission)) {
-    options.logger?.log("[winbridge-agent] revoke permission was not granted in the request");
+  if (!workflowState.permissions.includes(options.hostRevokePermission)) {
+    options.logger?.log("[winbridge-agent] revoke permission was not granted in the active grant");
     return;
   }
 
@@ -2655,7 +2707,6 @@ function terminateHostAuthorization(
 function scheduleHostExpiration(
   socket: WebSocket | undefined,
   options: AgentShellRuntimeOptions,
-  request: Extract<ProtocolEnvelope, { type: "session-authorization-request" }>,
   authorizationId: string,
   expiresAt: string,
   workflowState: HostWorkflowState,
@@ -2679,7 +2730,7 @@ function scheduleHostExpiration(
       action: "agent-shell.authorization.expired",
       outcome: "accepted",
       detail: {
-        previouslyGrantedPermissionCount: request.requestedPermissions.length,
+        previouslyGrantedPermissionCount: workflowState.permissions.length,
         ttlMs,
         visibleToHost: true,
         expired: true

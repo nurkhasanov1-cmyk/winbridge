@@ -188,6 +188,48 @@ describe("agent shell consent workflow", () => {
         "Runtime requested permissions"
       ],
       [
+        "non-array host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: "screen:view" as unknown as Permission[] },
+        "Runtime host grant scope"
+      ],
+      [
+        "empty host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: [] },
+        "Runtime host grant scope"
+      ],
+      [
+        "duplicate host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: ["screen:view", "screen:view"] },
+        "Runtime host grant scope"
+      ],
+      [
+        "invalid host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: ["input:keylogger" as Permission] },
+        "Runtime host grant scope"
+      ],
+      [
+        "viewer host grant scope",
+        {
+          role: "viewer",
+          peerId: "viewer-1",
+          displayName: "Viewer",
+          deviceId: "dev_viewer_1",
+          hostDecision: "approve",
+          hostGrantPermissions: ["screen:view"]
+        },
+        "Runtime host grant scope"
+      ],
+      [
+        "providerless host grant scope",
+        { hostGrantPermissions: ["screen:view"] },
+        "Runtime host grant scope"
+      ],
+      [
+        "denied host grant scope",
+        { hostDecision: "deny", hostGrantPermissions: ["screen:view"] },
+        "Runtime host grant scope"
+      ],
+      [
         "invalid revoke permission",
         { hostRevokePermission: "input:keylogger" as Permission },
         "Runtime revoke permission"
@@ -1970,6 +2012,194 @@ describe("agent shell consent workflow", () => {
       visibleToHost: true,
       permissions: ["screen:view"]
     });
+  });
+
+  it("approves only the configured host grant scope subset", async () => {
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["screen:view"],
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view", "input:pointer"], viewerEvents);
+
+    const decision = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-decision"
+    );
+    const state = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state"
+    );
+    const approvalAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.approved"
+    );
+    const activeAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.authorization.active"
+    );
+    const indicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.cause === "activated"
+    );
+
+    expect(decision).toMatchObject({
+      type: "session-authorization-decision",
+      decision: "approved",
+      grantedPermissions: ["screen:view"]
+    });
+    expect(state).toMatchObject({
+      type: "session-authorization-state",
+      status: "active",
+      visibleToHost: true,
+      permissions: ["screen:view"]
+    });
+    expect(approvalAudit).toMatchObject({
+      type: "audit-event",
+      detail: {
+        requestedPermissionCount: 2,
+        grantedPermissionCount: 1
+      }
+    });
+    expect(activeAudit).toMatchObject({
+      type: "audit-event",
+      detail: {
+        grantedPermissionCount: 1,
+        visibleToHost: true
+      }
+    });
+    expect(indicator).toMatchObject({
+      state: "active",
+      permissionCount: 1
+    });
+  });
+
+  it("blocks signal authorization when the narrowed host grant omits screen view", async () => {
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["input:pointer"],
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view", "input:pointer"], viewerEvents);
+
+    const state = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state"
+    );
+    if (state.type !== "session-authorization-state") {
+      throw new Error("Expected active authorization state");
+    }
+
+    const sentSignalCount = hostEvents.filter(
+      (event) => event.direction === "sent" && event.message.type === "signal"
+    ).length;
+    const receivedSignalCount = viewerEvents.filter(
+      (event) => event.direction === "received" && event.message.type === "signal"
+    ).length;
+    const blockedPayloadMarker = "input-only-grant-signal-payload";
+
+    expect(state).toMatchObject({
+      status: "active",
+      permissions: ["input:pointer"]
+    });
+    expect(() =>
+      host.send({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "host-1",
+        toPeerId: "viewer-1",
+        payload: {
+          authorizationId: state.authorizationId,
+          safeMarker: blockedPayloadMarker
+        }
+      })
+    ).toThrow("Agent shell signal requires active visible screen authorization");
+
+    await delay(100);
+
+    expect(
+      hostEvents.filter((event) => event.direction === "sent" && event.message.type === "signal")
+    ).toHaveLength(sentSignalCount);
+    expect(
+      viewerEvents.filter(
+        (event) => event.direction === "received" && event.message.type === "signal"
+      )
+    ).toHaveLength(receivedSignalCount);
+    expect(JSON.stringify([...hostEvents, ...viewerEvents])).not.toContain(blockedPayloadMarker);
+  });
+
+  it("fails closed when the configured host grant scope was not requested", async () => {
+    const hostLogs: string[] = [];
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["input:pointer"],
+      hostLogger: captureLogger(hostLogs),
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(hostEvents, (message) => message.type === "session-authorization-request");
+    await delay(100);
+
+    expect(hostLogs.join("\n")).toContain("configured grant scope is not requested");
+    expect(
+      [...hostEvents, ...viewerEvents].some(
+        (event) =>
+          event.direction !== "indicator" &&
+          "message" in event &&
+          (event.message.type === "session-authorization-decision" ||
+            event.message.type === "session-authorization-state" ||
+            event.message.type === "session-control" ||
+            event.message.type === "permission-revoked" ||
+            event.message.type === "signal" ||
+            event.message.type === "audit-event")
+      )
+    ).toBe(false);
+    expect(hostEvents.some((event) => event.direction === "indicator")).toBe(false);
+    expect(hostLogs.join("\n")).not.toContain("screen:view");
+    expect(hostLogs.join("\n")).not.toContain("input:pointer");
+  });
+
+  it("uses narrowed host grant scope for delayed revoke eligibility", async () => {
+    const hostLogs: string[] = [];
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["screen:view"],
+      hostLogger: captureLogger(hostLogs),
+      hostRevokeAfterMs: 10,
+      hostRevokePermission: "input:pointer",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view", "input:pointer"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active" &&
+        message.permissions.length === 1 &&
+        message.permissions[0] === "screen:view"
+    );
+    await delay(100);
+
+    expect(hostLogs.join("\n")).toContain("revoke permission was not granted in the active grant");
+    expect(
+      [...hostEvents, ...viewerEvents].some(
+        (event) =>
+          event.direction !== "indicator" &&
+          "message" in event &&
+          (event.message.type === "session-control" ||
+            event.message.type === "permission-revoked" ||
+            (event.message.type === "session-authorization-state" &&
+              event.message.status === "revoked") ||
+            (event.message.type === "audit-event" &&
+              event.message.action === "agent-shell.permission.revoked"))
+      )
+    ).toBe(false);
   });
 
   it("rejects invalid host decision provider configuration before relay startup", () => {
@@ -10481,6 +10711,7 @@ async function startRelayAndHost(options: {
   hostDisplayName?: string;
   hostDecisionProvider?: HostDecisionProvider;
   hostConsentTimeoutMs?: number;
+  hostGrantPermissions?: Permission[];
   hostLogger?: TestLogger;
   hostOnEvent?: (event: AgentShellEvent) => void;
   hostPauseAfterMs?: number;
@@ -10522,6 +10753,7 @@ async function startRelayAndHost(options: {
     hostDecision: options.hostDecision ?? "none",
     hostDecisionProvider: options.hostDecisionProvider,
     hostConsentTimeoutMs: options.hostConsentTimeoutMs,
+    hostGrantPermissions: options.hostGrantPermissions,
     hostDisconnectAfterMs: options.hostDisconnectAfterMs,
     decisionReason: options.decisionReason,
     authorizationTtlMs: options.authorizationTtlMs,

@@ -131,6 +131,7 @@ npm run dev:agent -- viewer --session demo --pairing 123-456
 
 Optional `--name` display values must be non-blank, already trimmed, at most 120 characters, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls.
 Optional `--request` values must use exact comma-separated permission tokens with no spaces around entries, for example `screen:view,input:pointer`.
+Optional host `--grant` values use the same exact permission-token format and can only narrow an approved host grant to a non-empty subset of the current viewer request.
 Optional workflow reason values such as `--revoke-reason`, `--pause-reason`, `--resume-reason`, and `--terminate-reason` must be non-blank, already trimmed, at most 240 characters, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls.
 
 Exercise the development consent workflow:
@@ -139,6 +140,15 @@ Exercise the development consent workflow:
 npm run dev:agent -- host --session demo --pairing 123-456 --host-decision approve --visible-session true
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
+
+To exercise a narrower development grant than the viewer requested:
+
+```powershell
+npm run dev:agent -- host --session demo --pairing 123-456 --host-decision approve --visible-session true --grant screen:view
+npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view,input:pointer
+```
+
+`--grant` is host-only and requires either `--host-decision approve` or `--host-consent-prompt true`. If omitted, approval grants the full request as before. If the configured grant contains an invalid, duplicate, empty, viewer-mode, deny/none-mode, or unrequested permission, the shell fails closed before approval, active state, control, signal, or workflow audit messages.
 
 For a closer development consent loop, let the host terminal prompt for each request:
 

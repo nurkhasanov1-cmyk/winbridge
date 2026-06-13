@@ -63,6 +63,20 @@ describe("agent shell arguments", () => {
     expect(parseArgs(["host", "--host-signal-probe-ack", "false"], {}, 42).hostSignalProbeAck).toBe(false);
   });
 
+  it("parses explicit host grant scope for static and interactive approvals", () => {
+    expect(
+      parseArgs(["host", "--host-decision", "approve", "--grant", "screen:view"], {}, 42)
+        .hostGrantPermissions
+    ).toEqual(["screen:view"]);
+    expect(
+      parseArgs(
+        ["host", "--host-consent-prompt", "true", "--grant", "screen:view,input:pointer"],
+        {},
+        42
+      ).hostGrantPermissions
+    ).toEqual(["screen:view", "input:pointer"]);
+  });
+
   it("parses viewer signal probe mode for screen-view viewer requests", () => {
     expect(
       parseArgs(
@@ -278,6 +292,20 @@ describe("agent shell arguments", () => {
     expect(() =>
       parseArgs(["viewer", "--request", "screen:view,input:pointer,screen:view"], {}, 42)
     ).toThrow(AgentShellUsageError);
+  });
+
+  it("rejects malformed or ambiguous host grant scope configuration", () => {
+    for (const raw of [
+      ["viewer", "--grant", "screen:view"],
+      ["host", "--grant", "screen:view"],
+      ["host", "--host-decision", "none", "--grant", "screen:view"],
+      ["host", "--host-decision", "deny", "--grant", "screen:view"],
+      ["host", "--host-decision", "approve", "--grant", "input:keylogger"],
+      ["host", "--host-decision", "approve", "--grant", "screen:view,screen:view"],
+      ["host", "--host-decision", "approve", "--grant", " screen:view"]
+    ]) {
+      expect(() => parseArgs(raw, {}, 42)).toThrow(AgentShellUsageError);
+    }
   });
 
   it("rejects malformed protocol identifier values", () => {
@@ -515,6 +543,8 @@ describe("agent shell arguments", () => {
         "screen:view,input:pointer",
         "--host-decision",
         "approve",
+        "--grant",
+        "screen:view",
         "--visible-session",
         "true",
         "--authorization-ttl-ms",
@@ -539,6 +569,7 @@ describe("agent shell arguments", () => {
     expect(args).toMatchObject({
       auditLogPath: "logs/audit.jsonl",
         requestedPermissions: ["screen:view", "input:pointer"],
+        hostGrantPermissions: ["screen:view"],
         hostDecision: "approve",
         hostConsentPrompt: false,
         visibleToHost: true,
