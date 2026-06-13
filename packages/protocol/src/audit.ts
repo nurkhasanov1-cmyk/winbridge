@@ -36,6 +36,10 @@ const AuditActionSchema = z
   .refine(
     (action) => !hasUnsafeFormatCharacter(action),
     "Audit action must not contain Unicode bidi or zero-width formatting controls"
+  )
+  .refine(
+    (action) => !hasSecretBearingAuditMetadata(action),
+    "Audit action must not contain sensitive metadata"
   );
 const AuditReasonSchema = z
   .string()
@@ -174,11 +178,13 @@ const safeAuditReasons = new Set([
   "Relay token rate limit exceeded"
 ]);
 const sensitiveReasonMarkerPattern =
-  /\b(?:token|credential|password|secret|pairing[\s_-]*code|api[\s_-]*key|access[\s_-]*key|authorization|proxy[\s_-]*authorization|authorization[\s_-]*header|auth[\s_-]*header|cookie|private[\s_-]*key|ssh[\s_-]*key|keystroke|screenshot|screen[\s_-]*data|screen[\s_-]*content)\b\s*(?::|=|\s+)\s*\S+/i;
+  /\b(?:token|credential|password|secret|pairing[\s_-]*code|api[\s_-]*key|access[\s_-]*key|authorization|proxy[\s_-]*authorization|authorization[\s_-]*header|auth[\s_-]*header|set[\s_-]*cookie|session[\s_-]*cookie|cookie|private[\s_-]*key|ssh[\s_-]*key|keystroke|screenshot|screen[\s_-]*data|screen[\s_-]*content)\b\s*(?::|=|\s+)\s*\S+/i;
 const sensitiveRemoteContentReasonPattern =
   /(?:\b(?:clipboard(?:[\s_-]*(?:text|content|contents))?|file[\s_-]*(?:content|data|bytes|transfer)|diagnostic(?:s)?(?:[\s_-]*(?:content|dump))?)\b\s*(?::|=)\s*\S+)|(?:\b(?:clipboard[\s_-]*(?:text|content|contents)|file[\s_-]*(?:content|data|bytes)|diagnostic(?:s)?[\s_-]*(?:content|dump))\b\s+\S+)/i;
 const sensitiveReasonCredentialPattern = /\b(?:bearer|basic)\s+[a-z0-9._~+/=-]+/i;
 const sensitiveReasonPrivateKeyPattern = /-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
+const sensitiveMetadataAssignmentPattern =
+  /(?:^|[\s,.;()[\]{}])([A-Za-z][A-Za-z0-9 _-]{0,80}?)(?::|=|\s+)\s*\S+/g;
 
 export function createAuditRecord(input: AuditRecordInput): AuditRecord {
   return AuditRecordSchema.parse({
@@ -228,17 +234,40 @@ function redactAuditReason(reason: string | undefined): string | undefined {
   return isSensitiveAuditReason(reason) ? REDACTED_AUDIT_VALUE : reason;
 }
 
-function isSensitiveAuditReason(reason: string): boolean {
-  if (safeAuditReasons.has(reason)) {
+export function hasSecretBearingAuditMetadata(
+  value: string,
+  options: { includeKeyAssignments?: boolean } = {}
+): boolean {
+  if (safeAuditReasons.has(value)) {
     return false;
   }
 
+  const includeKeyAssignments = options.includeKeyAssignments ?? true;
+
   return (
-    sensitiveReasonMarkerPattern.test(reason) ||
-    sensitiveRemoteContentReasonPattern.test(reason) ||
-    sensitiveReasonCredentialPattern.test(reason) ||
-    sensitiveReasonPrivateKeyPattern.test(reason)
+    sensitiveReasonMarkerPattern.test(value) ||
+    sensitiveRemoteContentReasonPattern.test(value) ||
+    sensitiveReasonCredentialPattern.test(value) ||
+    sensitiveReasonPrivateKeyPattern.test(value) ||
+    (includeKeyAssignments && hasSensitiveAuditMetadataAssignment(value))
   );
+}
+
+function isSensitiveAuditReason(reason: string): boolean {
+  return hasSecretBearingAuditMetadata(reason, { includeKeyAssignments: false });
+}
+
+function hasSensitiveAuditMetadataAssignment(value: string): boolean {
+  sensitiveMetadataAssignmentPattern.lastIndex = 0;
+
+  for (const match of value.matchAll(sensitiveMetadataAssignmentPattern)) {
+    const key = match[1]?.trim();
+    if (key && isSensitiveAuditDetailKey(key)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function hasAsciiControlCharacter(value: string): boolean {

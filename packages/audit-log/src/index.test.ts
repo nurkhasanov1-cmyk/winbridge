@@ -74,6 +74,19 @@ describe("MemoryAuditSink", () => {
     });
   });
 
+  it("rejects secret-bearing actions before storing them", () => {
+    const sink = new MemoryAuditSink();
+
+    expect(() =>
+      sink.write({
+        actor: { type: "relay", id: "relay-dev" },
+        action: "sessionCookie raw-memory-cookie",
+        outcome: "failed"
+      })
+    ).toThrow("Audit action must not contain sensitive metadata");
+    expect(sink.records()).toHaveLength(0);
+  });
+
   it("returns immutable audit records with immutable nested detail", () => {
     const sink = new MemoryAuditSink();
 
@@ -435,6 +448,31 @@ describe("FileAuditSink", () => {
       const content = readFileSync(path, "utf8");
       expect(content).not.toContain("raw-diagnostic-dump");
       expect(JSON.parse(content).reason).toBe("[REDACTED]");
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects secret-bearing actions before console or file output", () => {
+    const lines: string[] = [];
+    const consoleSink = new ConsoleAuditSink((line) => lines.push(line));
+    const root = mkdtempSync(join(tmpdir(), "winbridge-audit-"));
+    const path = join(root, "audit.jsonl");
+    const fileSink = new FileAuditSink(path);
+
+    try {
+      for (const sink of [consoleSink, fileSink]) {
+        expect(() =>
+          sink.write({
+            actor: { type: "relay", id: "relay-dev" },
+            action: "setCookie=raw-sink-cookie",
+            outcome: "failed"
+          })
+        ).toThrow("Audit action must not contain sensitive metadata");
+      }
+
+      expect(lines).toEqual([]);
+      expect(existsSync(path)).toBe(false);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

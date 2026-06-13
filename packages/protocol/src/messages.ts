@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { z } from "zod";
-import { AuditDetailSchema, AuditOutcomeSchema, redactAuditDetail } from "./audit.js";
+import {
+  AuditDetailSchema,
+  AuditOutcomeSchema,
+  hasSecretBearingAuditMetadata,
+  redactAuditDetail
+} from "./audit.js";
 import { SessionAuthorizationStatusSchema } from "./authorization.js";
 import { DeviceDisplayNameSchema, DeviceIdentitySchema } from "./identity.js";
 import { createJsonObjectSchema, stringifyJson, type JsonObject, type JsonValue } from "./json.js";
@@ -76,6 +81,10 @@ const ProtocolAuditActionSchema = z
   .refine(
     (action) => !hasUnsafeFormatCharacter(action),
     "Audit event action must not contain Unicode bidi or zero-width formatting controls"
+  )
+  .refine(
+    (action) => !hasSecretBearingAuditMetadata(action),
+    "Audit event action must not contain sensitive metadata"
   );
 const ProtocolCapabilitySchema = z
   .string()

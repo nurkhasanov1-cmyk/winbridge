@@ -447,6 +447,53 @@ describe("audit records", () => {
     }
   });
 
+  it("rejects secret-bearing audit actions without exposing raw action text", () => {
+    for (const action of [
+      "agent-shell.token raw-token-secret",
+      "Authorization: Bearer raw-authorization-token",
+      "diagnosticDump: raw-diagnostic-dump",
+      "screenContent: raw-screen-content",
+      "setCookie=raw-set-cookie",
+      "sessionCookie raw-session-cookie",
+      "cookieValue raw-cookie-value",
+      "authHeaderValue raw-auth-header",
+      "agent-shell.cookieValue raw-cookie-value",
+      "agent-shell.authHeaderValue raw-auth-header",
+      "agent-shell.tokenValue raw-token-secret"
+    ]) {
+      try {
+        createAuditRecord({
+          actor: { type: "relay", id: "relay-dev" },
+          action,
+          outcome: "failed"
+        });
+        throw new Error("Expected secret-bearing audit action to be rejected");
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain("Audit action must not contain sensitive metadata");
+        expect((error as Error).message).not.toContain(action);
+        expect((error as Error).message).not.toContain("raw-");
+      }
+    }
+  });
+
+  it("accepts non-secret dotted audit action names", () => {
+    for (const action of [
+      "relay.peer.join.denied",
+      "agent-shell.authorization.active",
+      "relay.token.denied",
+      "agent-shell.authorizationId.recorded"
+    ]) {
+      expect(
+        createAuditRecord({
+          actor: { type: "relay", id: "relay-dev" },
+          action,
+          outcome: "failed"
+        }).action
+      ).toBe(action);
+    }
+  });
+
   it("rejects audit records with malformed identifiers", () => {
     expect(() =>
       createAuditRecord({

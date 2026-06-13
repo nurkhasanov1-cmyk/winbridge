@@ -2543,6 +2543,71 @@ describe("protocol envelopes", () => {
       }
     }
   });
+
+  it("rejects secret-bearing audit-event actions without exposing raw action text", () => {
+    for (const action of [
+      "agent-shell.token raw-token-secret",
+      "Authorization: Bearer protocol-raw-token",
+      "diagnosticDump: protocol-raw-diagnostic-dump",
+      "screenContent: protocol-raw-screen-content",
+      "setCookie=protocol-raw-set-cookie",
+      "sessionCookie protocol-raw-session-cookie",
+      "cookieValue protocol-raw-cookie-value",
+      "authHeaderValue protocol-raw-auth-header",
+      "agent-shell.cookieValue protocol-raw-cookie-value",
+      "agent-shell.authHeaderValue protocol-raw-auth-header",
+      "agent-shell.tokenValue protocol-raw-token"
+    ]) {
+      const message = {
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit-demo",
+        actorPeerId: "host-1",
+        action,
+        outcome: "failed"
+      } as const;
+
+      for (const operation of [
+        () => parseProtocolEnvelope(message),
+        () => encodeProtocolEnvelope(message as Parameters<typeof encodeProtocolEnvelope>[0])
+      ]) {
+        try {
+          operation();
+          throw new Error("Expected secret-bearing audit-event action to be rejected");
+        } catch (error) {
+          expect(error).toBeInstanceOf(Error);
+          expect((error as Error).message).toContain(
+            "Audit event action must not contain sensitive metadata"
+          );
+          expect((error as Error).message).not.toContain(action);
+          expect((error as Error).message).not.toContain("raw-");
+        }
+      }
+    }
+  });
+
+  it("accepts non-secret dotted audit-event action names", () => {
+    for (const action of [
+      "agent-shell.authorization.active",
+      "relay.peer.join.denied",
+      "relay.token.denied",
+      "agent-shell.authorizationId.recorded"
+    ]) {
+      const message = {
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit-demo",
+        actorPeerId: "host-1",
+        action,
+        outcome: "failed"
+      } as const;
+
+      expect(parseProtocolEnvelope(message)).toMatchObject({ action });
+      expect(encodeProtocolEnvelope(message as Parameters<typeof encodeProtocolEnvelope>[0])).toContain(
+        `"action":"${action}"`
+      );
+    }
+  });
 });
 
 describe("session grants", () => {

@@ -1247,6 +1247,11 @@ describe("relay runtime integration", () => {
         name: "zero-width action",
         action: "agent-shell\ufeffrelay-private-action-marker",
         privateMarker: "relay-private-action-marker"
+      },
+      {
+        name: "secret-bearing action",
+        action: "agent-shell.cookieValue relay-raw-action-cookie",
+        privateMarker: "relay-raw-action-cookie"
       }
     ];
 
