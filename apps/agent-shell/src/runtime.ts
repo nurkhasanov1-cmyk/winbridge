@@ -623,7 +623,12 @@ function isUntrustedViewerAuthorizationLifecycleMessage(
     case "session-authorization-decision":
       return (
         envelope.viewerPeerId !== options.peerId ||
-        !isObservedHostAuthority(sessionState, envelope.hostPeerId)
+        !isObservedHostAuthority(sessionState, envelope.hostPeerId) ||
+        isTerminalBoundViewerAuthorizationDecisionReplay(
+          sessionState,
+          envelope.authorizationId,
+          envelope.hostPeerId
+        )
       );
     case "session-authorization-state":
       return !hasBoundViewerAuthorizationStateAuthority(
@@ -683,6 +688,19 @@ function hasBoundViewerAuthorizationStateAuthority(
   }
 
   return !isTerminalAuthorizationStatus(snapshot.status) || snapshot.status === nextStatus;
+}
+
+function isTerminalBoundViewerAuthorizationDecisionReplay(
+  sessionState: AgentShellSessionState,
+  authorizationId: string,
+  hostPeerId: string
+): boolean {
+  const snapshot = sessionState.viewerAuthorization;
+
+  return (
+    isBoundViewerAuthorizationAuthority(snapshot, authorizationId, hostPeerId) &&
+    isTerminalAuthorizationStatus(snapshot.status)
+  );
 }
 
 function hasMutableBoundViewerAuthorizationAuthority(

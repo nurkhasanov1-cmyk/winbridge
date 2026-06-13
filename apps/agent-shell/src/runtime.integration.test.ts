@@ -5017,6 +5017,343 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("ignores approved decision replay after a denied same-authorization decision", async () => {
+    const decisionReplayServer = await startObservedHostViewerAuthorizationLifecycleServer(() => {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+
+      return [
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz_denied_decision_replay",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "denied",
+          grantedPermissions: [],
+          reason: "private denied decision replay reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz_denied_decision_replay",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: ["screen:view"],
+          expiresAt,
+          reason: "private approved decision replay reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz_denied_decision_replay",
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: ["screen:view"],
+          expiresAt,
+          reason: "private active decision replay reason raw-token"
+        }
+      ];
+    });
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        decisionReplayServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-authorization-decision" &&
+          message.authorizationId === "authz_denied_decision_replay" &&
+          message.decision === "denied"
+      );
+      await waitForRawEventCount(viewerEvents, 2);
+      await delay(100);
+
+      expect(
+        viewerEvents.some(
+          (event) =>
+            event.direction === "received" &&
+            ((event.message.type === "session-authorization-decision" &&
+              event.message.authorizationId === "authz_denied_decision_replay" &&
+              event.message.decision === "approved") ||
+              (event.message.type === "session-authorization-state" &&
+                event.message.authorizationId === "authz_denied_decision_replay"))
+        )
+      ).toBe(false);
+
+      await expectViewerSignalSendBlocked(
+        viewer,
+        viewerEvents,
+        "blocked-after-denied-decision-replay",
+        viewerLogs
+      );
+      expect(viewerLogs.join("\n")).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(viewerLogs.join("\n")).not.toContain("private approved decision replay");
+      expect(viewerLogs.join("\n")).not.toContain("private active decision replay");
+      expect(viewerLogs.join("\n")).not.toContain("raw-token");
+      expect(JSON.stringify(viewerEvents.filter((event) => event.direction === "raw"))).not.toContain(
+        "authz_denied_decision_replay"
+      );
+    } finally {
+      await viewer?.stop();
+      await decisionReplayServer.stop();
+    }
+  });
+
+  it.each([
+    ["revoked", "authz_revoked_decision_replay"],
+    ["terminated", "authz_terminated_decision_replay"],
+    ["expired", "authz_expired_decision_replay"]
+  ] as const)(
+    "ignores approved decision replay after %s same-authorization state",
+    async (terminalStatus, authorizationId) => {
+      const terminalReplayServer = await startObservedHostViewerAuthorizationLifecycleServer(() => {
+        const expiresAt = new Date(Date.now() + 60_000).toISOString();
+
+        return [
+          {
+            ...createMessageBase("session-demo"),
+            type: "session-authorization-decision",
+            authorizationId,
+            hostPeerId: "host-1",
+            viewerPeerId: "viewer-1",
+            decision: "approved",
+            grantedPermissions: ["screen:view"],
+            expiresAt
+          },
+          {
+            ...createMessageBase("session-demo"),
+            type: "session-authorization-state",
+            authorizationId,
+            actorPeerId: "host-1",
+            status: "active",
+            visibleToHost: true,
+            permissions: ["screen:view"],
+            expiresAt
+          },
+          {
+            ...createMessageBase("session-demo"),
+            type: "session-authorization-state",
+            authorizationId,
+            actorPeerId: "host-1",
+            status: terminalStatus,
+            visibleToHost: false,
+            permissions: [],
+            expiresAt,
+            reason: `private ${terminalStatus} state replay reason raw-token`
+          },
+          {
+            ...createMessageBase("session-demo"),
+            type: "session-authorization-decision",
+            authorizationId,
+            hostPeerId: "host-1",
+            viewerPeerId: "viewer-1",
+            decision: "approved",
+            grantedPermissions: ["screen:view"],
+            expiresAt,
+            reason: `private ${terminalStatus} approved replay reason raw-token`
+          },
+          {
+            ...createMessageBase("session-demo"),
+            type: "session-authorization-state",
+            authorizationId,
+            actorPeerId: "host-1",
+            status: "active",
+            visibleToHost: true,
+            permissions: ["screen:view"],
+            expiresAt,
+            reason: `private ${terminalStatus} active replay reason raw-token`
+          }
+        ];
+      });
+      const viewerEvents: AgentShellEvent[] = [];
+      const viewerLogs: string[] = [];
+      let viewer: AgentShellRuntime | undefined;
+
+      try {
+        viewer = await startViewer(
+          terminalReplayServer.url,
+          ["screen:view"],
+          viewerEvents,
+          captureLogger(viewerLogs)
+        );
+
+        await waitForMessage(
+          viewerEvents,
+          (message) =>
+            message.type === "session-authorization-state" &&
+            message.authorizationId === authorizationId &&
+            message.status === terminalStatus
+        );
+        await waitForRawEventCount(viewerEvents, 2);
+        await delay(100);
+
+        expect(
+          viewerEvents.filter(
+            (event) =>
+              event.direction === "received" &&
+              event.message.type === "session-authorization-decision" &&
+              event.message.authorizationId === authorizationId &&
+              event.message.decision === "approved"
+          )
+        ).toHaveLength(1);
+        expect(
+          viewerEvents.filter(
+            (event) =>
+              event.direction === "received" &&
+              event.message.type === "session-authorization-state" &&
+              event.message.authorizationId === authorizationId &&
+              event.message.status === "active"
+          )
+        ).toHaveLength(1);
+
+        await expectViewerSignalSendBlocked(
+          viewer,
+          viewerEvents,
+          `blocked-after-${terminalStatus}-decision-replay`,
+          viewerLogs
+        );
+        expect(viewerLogs.join("\n")).toContain("ignored unsafe inbound protocol message bytes=");
+        expect(viewerLogs.join("\n")).not.toContain(`private ${terminalStatus} approved replay`);
+        expect(viewerLogs.join("\n")).not.toContain(`private ${terminalStatus} active replay`);
+        expect(viewerLogs.join("\n")).not.toContain("raw-token");
+        expect(JSON.stringify(viewerEvents.filter((event) => event.direction === "raw"))).not.toContain(
+          authorizationId
+        );
+      } finally {
+        await viewer?.stop();
+        await terminalReplayServer.stop();
+      }
+    }
+  );
+
+  it("allows a new authorization id after terminal state from the observed host", async () => {
+    const newDecisionServer = await startObservedHostViewerAuthorizationLifecycleServer(() => {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString();
+
+      return [
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz_terminal_old",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: ["screen:view"],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz_terminal_old",
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: ["screen:view"],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz_terminal_old",
+          actorPeerId: "host-1",
+          status: "terminated",
+          visibleToHost: false,
+          permissions: [],
+          expiresAt,
+          reason: "private old terminal reason raw-token"
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId: "authz_terminal_new",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: ["screen:view"],
+          expiresAt
+        },
+        {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId: "authz_terminal_new",
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: ["screen:view"],
+          expiresAt
+        }
+      ];
+    });
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        newDecisionServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      await waitForMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "session-authorization-state" &&
+          message.authorizationId === "authz_terminal_new" &&
+          message.status === "active"
+      );
+
+      const signalPayload = {
+        authorizationId: "authz_terminal_new",
+        kind: "viewer-offer",
+        safeMarker: "allowed-after-terminal-new-decision"
+      };
+      viewer.send({
+        ...createMessageBase("session-demo"),
+        type: "signal",
+        fromPeerId: "viewer-1",
+        toPeerId: "host-1",
+        payload: signalPayload
+      });
+
+      const sentSignal = await waitForSentMessage(
+        viewerEvents,
+        (message) =>
+          message.type === "signal" &&
+          message.fromPeerId === "viewer-1" &&
+          message.toPeerId === "host-1"
+      );
+
+      expect(sentSignal).toMatchObject({
+        type: "signal",
+        fromPeerId: "viewer-1",
+        toPeerId: "host-1",
+        payload: {
+          redacted: "[REDACTED]",
+          byteLength: Buffer.byteLength(JSON.stringify(signalPayload))
+        }
+      });
+      expect(JSON.stringify(viewerEvents)).not.toContain("allowed-after-terminal-new-decision");
+      expect(JSON.stringify(viewerEvents)).not.toContain("private old terminal reason");
+      expect(viewerLogs.join("\n")).not.toContain("private old terminal reason");
+      expect(viewerLogs.join("\n")).not.toContain("raw-token");
+    } finally {
+      await viewer?.stop();
+      await newDecisionServer.stop();
+    }
+  });
+
   it("ignores viewer authorization decisions addressed to another viewer", async () => {
     const wrongViewerServer = await startViewerAuthorizationLifecycleServer(() => {
       const expiresAt = new Date(Date.now() + 60_000).toISOString();

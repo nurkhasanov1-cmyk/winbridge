@@ -189,7 +189,7 @@ npm run dev:agent -- host --session demo --pairing 123-456 --host-decision appro
 npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view
 ```
 
-Revocation simulation sends bound protocol control, notification, state, local host indicator, and audit messages only; it does not perform remote actions. Viewer-side authorization remains fail-closed after revocation: later stale lifecycle messages for the same authorization id cannot restore the revoked `screen:view` permission. A different authorization id from the observed host starts a new consent scope; the previous revocation floor does not remove or restore permissions for that new authorization.
+Revocation simulation sends bound protocol control, notification, state, local host indicator, and audit messages only; it does not perform remote actions. Viewer-side authorization remains fail-closed after revocation: later stale lifecycle messages for the same authorization id cannot restore the revoked `screen:view` permission, and terminal authorization ids cannot be reopened by approved decision replay for the same id. A different authorization id from the observed host starts a new consent scope; the previous revocation floor does not remove or restore permissions for that new authorization.
 
 Simulate host session termination during development:
 
