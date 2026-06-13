@@ -74,7 +74,7 @@ The repository SHALL maintain release readiness and privacy/data-handling docume
 - **AND** it keeps the existing OpenSpec, safety, security review, and verification checklist expectations visible
 
 ### Requirement: Stable local test runner
-The repository SHALL run local `npm test` through serial per-file Vitest invocations using a process-based worker pool. The runner MUST discover `.test.ts` files under `apps/` and `packages/`, invoke each discovered file once, and include `--pool forks`, `--maxWorkers 1`, `--minWorkers 1`, `--no-file-parallelism`, and `--no-isolate` for each invocation.
+The repository SHALL run local `npm test` through serial per-file Vitest invocations using a process-based worker pool. The runner MUST discover `.test.ts` files under `apps/` and `packages/`, invoke each discovered file once, include `--pool forks`, `--maxWorkers 1`, `--minWorkers 1`, and `--no-file-parallelism` for each invocation, and MUST NOT pass `--no-isolate`.
 
 #### Scenario: Runtime integration tests avoid thread worker IPC
 - **WHEN** `npm test` runs in a Windows-compatible local development environment
@@ -85,3 +85,23 @@ The repository SHALL run local `npm test` through serial per-file Vitest invocat
 - **WHEN** the test runner enumerates tests
 - **THEN** it discovers `.test.ts` files under both `apps/` and `packages/`
 - **AND** it invokes each discovered test file once with serial execution flags
+
+#### Scenario: Fork isolation remains enabled
+- **WHEN** the test runner starts Vitest for a discovered test file
+- **THEN** the invocation omits `--no-isolate`
+- **AND** Vitest keeps its default forks isolation while still running only that test file
+
+### Requirement: Safe GitHub backlog sequencing
+The repository SHALL keep GitHub setup and backlog guidance aligned with the current bootstrap safety scope. Suggested initial issues MUST prioritize identity/pairing, consent visibility, revocation, auditability, relay/protocol hardening, documentation gates, and CI/OpenSpec verification before native capture, input, installer, startup, service, or privilege work. Backlog guidance that mentions high-risk native or sensitive areas MUST state that those items require explicit OpenSpec design and security review before implementation.
+
+#### Scenario: Initial backlog avoids premature native implementation
+- **WHEN** maintainers use the repository GitHub setup guide to seed initial issues
+- **THEN** the initial issue list prioritizes bootstrap-safe work before Windows capture, input, installer, startup, service, or privilege implementation
+
+#### Scenario: Native work remains gated
+- **WHEN** repository documentation mentions future Windows capture, input, native APIs, installer, startup, service, or privilege work
+- **THEN** it states that implementation requires a future OpenSpec change and security review before coding
+
+#### Scenario: Backlog guidance preserves safety boundaries
+- **WHEN** suggested issues are reviewed for the current bootstrap scope
+- **THEN** they MUST NOT imply hidden sessions, unattended access, stealth installation, unauthorized persistence, credential theft, keylogging, AV/EDR evasion, Windows prompt bypass, hidden capture, hidden input, or remote actions without explicit host consent

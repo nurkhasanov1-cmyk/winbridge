@@ -48,10 +48,18 @@ Release documentation gates:
 
 ## Suggested Initial Issues
 
-1. Define identity and device pairing model.
-2. Design host consent and visible session UX.
-3. Choose Windows native stack.
-4. Add WebRTC signaling and media transport.
-5. Add audit persistence.
-6. Add Windows capture adapter.
-7. Add Windows input adapter with revocation tests.
+Seed the public backlog with bootstrap-safe issues first:
+
+1. Define identity and device pairing requirements.
+2. Design host consent, visible session, pause, revoke, and disconnect UX.
+3. Specify audit persistence and redaction requirements for development and future production use.
+4. Harden relay and protocol negative tests for malformed messages, disconnects, authorization lifecycle, and audit safety.
+5. Design WebRTC signaling and media transport requirements without implementing capture or input paths.
+6. Keep release checklist, privacy notice, OpenSpec validation, and CI verification current.
+7. Prepare native Windows architecture notes that list consent, visibility, revoke, audit, and security-review gates.
+
+Do not seed implementation issues for Windows capture, input injection, installer,
+startup persistence, background services, privilege elevation, or native Windows
+APIs until a dedicated OpenSpec change and security review define the consent,
+visibility, authorization, revocation, audit, and abuse-case requirements for
+that capability.

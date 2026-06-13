@@ -25,7 +25,6 @@ for (const testFile of testFiles) {
       "--minWorkers",
       "1",
       "--no-file-parallelism",
-      "--no-isolate",
       "--reporter",
       "dot"
     ],

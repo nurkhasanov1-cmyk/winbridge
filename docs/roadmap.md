@@ -21,24 +21,24 @@
 ## Phase 2: Media Transport
 
 - WebRTC signaling.
-- Screen frame transport.
+- Screen frame transport design after consent, authorization, visibility, revoke, and audit gates are specified.
 - Bandwidth and quality controls.
 - Pause/resume.
 - Timeout and reconnect behavior.
 
 ## Phase 3: Windows Native Host
 
-- Windows capture adapter.
+- Windows capture adapter after a dedicated OpenSpec design and security review.
 - Visible host status surface.
 - Disconnect hotkey or tray control.
 - Permission enforcement.
-- Installer without hidden behavior.
+- Installer without hidden behavior, unauthorized persistence, or service startup surprises.
 
 ## Phase 4: Windows Viewer
 
 - Viewer UI.
 - Viewer local status surface.
-- Remote pointer/keyboard UX.
+- Remote pointer/keyboard UX after a dedicated OpenSpec design and security review specify host-granted input permission, revocation, and audit gates.
 - Permission request UX.
 - Session logs.
 
