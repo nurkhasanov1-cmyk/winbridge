@@ -169,12 +169,18 @@ export type AgentShellHostStatusSnapshot = {
   authorizationStatus?: SessionAuthorizationStatus;
 };
 
+export type AgentShellRemoteDisconnectReasonCode = Extract<
+  ProtocolEnvelope,
+  { type: "peer-disconnected" }
+>["reasonCode"];
+
 export type AgentShellViewerStatusSnapshot = {
   state: AgentShellHostIndicatorEvent["state"];
   visibleToHost: boolean;
   permissionCount: number;
   authorizationId?: string;
   authorizationStatus?: SessionAuthorizationStatus;
+  remoteDisconnectReasonCode?: AgentShellRemoteDisconnectReasonCode;
 };
 
 export const MAX_AGENT_SHELL_REASON_LENGTH = 240;
@@ -273,6 +279,7 @@ type HostWorkflowState = {
 type AgentShellSessionState = {
   localPeerDisconnected: boolean;
   remotePeerDisconnected: boolean;
+  remoteDisconnectReasonCode?: AgentShellRemoteDisconnectReasonCode;
   recipientAvailable: boolean;
   observedPeerId?: string;
   observedPeerRole?: SessionRole;
@@ -633,6 +640,7 @@ function rawDataToString(data: RawData): string {
 function resetConnectionScopedSessionState(sessionState: AgentShellSessionState): void {
   sessionState.localPeerDisconnected = false;
   sessionState.remotePeerDisconnected = false;
+  sessionState.remoteDisconnectReasonCode = undefined;
   sessionState.recipientAvailable = false;
   sessionState.observedPeerId = undefined;
   sessionState.observedPeerRole = undefined;
@@ -743,6 +751,7 @@ async function handleMessage(
 
     if (envelope.type === "peer-disconnected") {
       sessionState.remotePeerDisconnected = true;
+      sessionState.remoteDisconnectReasonCode = envelope.reasonCode;
       invalidateViewerSignalProbe(sessionState);
       sessionState.recipientAvailable = false;
       sessionState.observedPeerId = undefined;
@@ -1874,12 +1883,14 @@ function getViewerStatusSnapshot(
   }
 
   if (sessionState.remotePeerDisconnected) {
+    const remoteDisconnectReasonCode = sessionState.remoteDisconnectReasonCode;
     return {
       state: "inactive",
       authorizationId: snapshot.authorizationId,
       authorizationStatus: snapshot.status,
       visibleToHost: false,
-      permissionCount: 0
+      permissionCount: 0,
+      ...(remoteDisconnectReasonCode ? { remoteDisconnectReasonCode } : {})
     };
   }
 

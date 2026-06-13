@@ -76,6 +76,35 @@ describe("interactive viewer control prompt", () => {
     expect(output.text()).not.toContain("raw-token");
   });
 
+  it("prints bounded remote disconnect reason code in viewer status", async () => {
+    const runtime = createRuntimeSpy();
+    vi.mocked(runtime.getViewerStatus).mockReturnValue({
+      state: "inactive",
+      authorizationStatus: "active",
+      authorizationId: "authz_viewer_control_1",
+      visibleToHost: false,
+      permissionCount: 0,
+      remoteDisconnectReasonCode: "peer-closed"
+    });
+    const output = createCapturingOutput();
+
+    startInteractiveViewerControlPrompt(runtime, {
+      input: PassThrough.from(["status\n"]),
+      output
+    });
+    await waitForText(output, (text) => text.includes("remoteDisconnectReasonCode=peer-closed"));
+
+    expect(runtime.getViewerStatus).toHaveBeenCalledTimes(1);
+    expect(runtime.leave).not.toHaveBeenCalled();
+    expect(runtime.send).not.toHaveBeenCalled();
+    expect(output.text()).toContain("state=inactive");
+    expect(output.text()).toContain("visibleToHost=false");
+    expect(output.text()).toContain("permissionCount=0");
+    expect(output.text()).not.toContain("host-1");
+    expect(output.text()).not.toContain("Host closed session");
+    expect(output.text()).not.toContain("raw-token");
+  });
+
   it("prints viewer help without reading status, leaving, invoking host controls, or public sends", async () => {
     const runtime = createRuntimeSpy();
     const output = createCapturingOutput();

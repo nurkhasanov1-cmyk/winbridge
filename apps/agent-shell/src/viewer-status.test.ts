@@ -28,6 +28,24 @@ describe("viewer status print", () => {
     );
   });
 
+  it("formats trusted remote disconnect status with bounded reason code metadata", () => {
+    const formatted = formatViewerStatus({
+      state: "inactive",
+      authorizationStatus: "active",
+      authorizationId: "authz_viewer_status_1",
+      visibleToHost: false,
+      permissionCount: 0,
+      remoteDisconnectReasonCode: "heartbeat-timeout"
+    });
+
+    expect(formatted).toBe(
+      "[winbridge-agent] viewer status state=inactive visibleToHost=false permissionCount=0 authorizationStatus=active authorizationId=authz_viewer_status_1 remoteDisconnectReasonCode=heartbeat-timeout\n"
+    );
+    expect(formatted).not.toContain("host-1");
+    expect(formatted).not.toContain("Host closed session");
+    expect(formatted).not.toContain("raw-token");
+  });
+
   it("prints viewer status after the configured delay without invoking controls or public sends", async () => {
     vi.useFakeTimers();
     try {

@@ -1754,7 +1754,7 @@ The interactive host control prompt SHALL support an exact read-only `status` co
 - **THEN** it MUST NOT start screen capture, send input, sync clipboard, transfer files, install services, configure startup persistence, collect credentials, hide the session from the host, reconnect peers, suppress host visibility, or bypass consent workflows
 
 ### Requirement: Viewer status snapshot
-The managed viewer agent shell runtime SHALL expose a read-only local viewer status snapshot derived from the current viewer authorization state. The snapshot MUST NOT send protocol messages, emit workflow audit events, grant permissions, change authorization lifecycle state, start signaling, or invoke host controls. Status snapshots MUST be viewer-only and MUST expose only bounded lifecycle metadata: local state, visible host-session flag, action-capable permission count, and optional authorization id/status.
+The managed viewer agent shell runtime SHALL expose a read-only local viewer status snapshot derived from the current viewer authorization state. The snapshot MUST NOT send protocol messages, emit workflow audit events, grant permissions, change authorization lifecycle state, start signaling, reconnect peers, or invoke host controls. Status snapshots MUST be viewer-only and MUST expose only bounded lifecycle metadata: local state, visible host-session flag, action-capable permission count, optional authorization id/status, and optional relay-defined remote disconnect reason code after trusted remote host disconnect.
 
 #### Scenario: Viewer status is inactive before authorization
 - **WHEN** a viewer runtime has not received an authorization decision or visible active state
@@ -1793,7 +1793,7 @@ The agent shell SHALL reject malformed, host-mode, or ambiguous viewer status CL
 - **THEN** CLI validation succeeds and the runtime MAY start normally
 
 ### Requirement: Viewer status CLI output
-The viewer agent shell SHALL support an opt-in development status print that calls the managed runtime `getViewerStatus()` snapshot after the configured delay. The status print MUST expose only bounded local lifecycle metadata: state, visible host-session flag, action-capable permission count, and optional authorization id/status. The status print MUST NOT send protocol messages, emit workflow audit events, grant permissions, change authorization lifecycle state, start signaling, invoke host controls, or expose screen, input, clipboard, file-transfer, diagnostics, token, pairing, credential, private-reason, display-name, peer-id, signal-payload, or raw protocol data.
+The viewer agent shell SHALL support an opt-in development status print that calls the managed runtime `getViewerStatus()` snapshot after the configured delay. The status print MUST expose only bounded local lifecycle metadata: state, visible host-session flag, action-capable permission count, optional authorization id/status, and optional relay-defined remote disconnect reason code after trusted remote host disconnect. The status print MUST NOT send protocol messages, emit workflow audit events, grant permissions, change authorization lifecycle state, start signaling, reconnect peers, invoke host controls, or expose screen, input, clipboard, file-transfer, diagnostics, token, pairing, credential, private-reason, display-name, peer-id, signal-payload, raw protocol data, or raw WebSocket close reason text.
 
 #### Scenario: Viewer status prints inactive status
 - **WHEN** viewer status print mode fires before the viewer has observed active visible authorization
@@ -1803,6 +1803,11 @@ The viewer agent shell SHALL support an opt-in development status print that cal
 #### Scenario: Viewer status prints active status
 - **WHEN** viewer status print mode fires after the viewer has observed active visible authorization
 - **THEN** it prints active local status metadata with `visibleToHost: true`, the action-capable permission count, and optional authorization id/status
+
+#### Scenario: Viewer status prints trusted disconnect reason code
+- **WHEN** viewer status print mode fires after the viewer has recorded trusted remote host disconnect state
+- **THEN** it prints inactive local status metadata with `visibleToHost: false`, permission count `0`, optional authorization id/status, and the bounded relay-defined remote disconnect reason code
+- **AND** it MUST NOT print peer ids, display names, private reasons, signal payloads, tokens, pairing codes, raw protocol data, or raw WebSocket close reason text
 
 #### Scenario: Viewer status print safety boundary
 - **WHEN** viewer status print mode is configured, starts, fires, fails, or is skipped
@@ -1842,13 +1847,14 @@ The viewer agent shell SHALL support an opt-in development local disconnect that
 - **THEN** it MUST NOT start screen capture, send input, sync clipboard, transfer files, install services, configure startup persistence, collect credentials, hide the session from the host, invoke host controls, or bypass consent workflows
 
 ### Requirement: Viewer status reflects trusted remote disconnect
-The managed viewer agent shell runtime SHALL report inactive local viewer status after it records trusted remote host disconnect state. The status snapshot MUST keep optional bounded authorization id/status metadata when available, but MUST report `visibleToHost: false` and permission count `0`. Reading status after disconnect MUST NOT send protocol messages, emit workflow audit events, grant permissions, start signaling, invoke host controls, reconnect peers, or change authorization lifecycle state.
+The managed viewer agent shell runtime SHALL report inactive local viewer status after it records trusted remote host disconnect state. The status snapshot MUST keep optional bounded authorization id/status metadata and the bounded relay-defined remote disconnect reason code when available, but MUST report `visibleToHost: false` and permission count `0`. Reading status after disconnect MUST NOT send protocol messages, emit workflow audit events, grant permissions, start signaling, invoke host controls, reconnect peers, or change authorization lifecycle state.
 
 #### Scenario: Viewer status is inactive after host disconnect
 - **WHEN** a viewer runtime has active visible authorization
 - **AND** it records a trusted relay-originated `peer-disconnected` notice for the observed host
 - **THEN** the viewer status snapshot reports inactive local state, `visibleToHost: false`, and permission count `0`
 - **AND** it preserves optional authorization id/status metadata from the last local viewer authorization
+- **AND** it includes only the bounded relay-defined disconnect reason code from the trusted notice
 
 #### Scenario: Viewer status read after disconnect remains local
 - **WHEN** a viewer runtime reads status after recording trusted host disconnect state
@@ -1904,7 +1910,7 @@ The interactive viewer control prompt SHALL accept only exact `status` and `disc
 
 #### Scenario: Viewer control prompt prints status
 - **WHEN** viewer control prompt mode receives exact command `status`
-- **THEN** it prints bounded local viewer status metadata with state, visible flag, permission count, and optional authorization id/status
+- **THEN** it prints bounded local viewer status metadata with state, visible flag, permission count, optional authorization id/status, and optional relay-defined remote disconnect reason code after trusted remote host disconnect
 - **AND** it does not invoke host lifecycle controls, viewer local disconnect, or public runtime sends
 
 #### Scenario: Viewer control prompt disconnects locally

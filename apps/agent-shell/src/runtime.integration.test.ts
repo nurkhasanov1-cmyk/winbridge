@@ -2742,10 +2742,13 @@ describe("agent shell consent workflow", () => {
     }
 
     host.disconnect();
-    await waitForMessage(
+    const disconnectNotice = await waitForMessage(
       viewerEvents,
       (message) => message.type === "peer-disconnected" && message.peerId === "host-1"
     );
+    if (disconnectNotice.type !== "peer-disconnected") {
+      throw new Error("Expected trusted host disconnect notice");
+    }
     const sentCountBeforeDisconnectedStatus = viewerEvents.filter(
       (event) => event.direction === "sent"
     ).length;
@@ -2755,7 +2758,8 @@ describe("agent shell consent workflow", () => {
       authorizationId: activeState.authorizationId,
       authorizationStatus: "active",
       visibleToHost: false,
-      permissionCount: 0
+      permissionCount: 0,
+      remoteDisconnectReasonCode: disconnectNotice.reasonCode
     });
     expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
       sentCountBeforeDisconnectedStatus
