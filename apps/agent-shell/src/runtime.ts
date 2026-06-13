@@ -175,7 +175,7 @@ export type AgentShellRemoteDisconnectReasonCode = Extract<
   { type: "peer-disconnected" }
 >["reasonCode"];
 
-export type AgentShellViewerLocalInactiveCause = "local-leave";
+export type AgentShellViewerLocalInactiveCause = "local-leave" | "socket-closed";
 
 export type AgentShellViewerStatusSnapshot = {
   state: AgentShellHostIndicatorEvent["state"];
@@ -324,6 +324,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
 
   const logger = options.logger ?? console;
   let socket: WebSocket | undefined;
+  let suppressNextViewerSocketCloseInactiveCause = false;
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const sessionState: AgentShellSessionState = {
     localPeerDisconnected: false,
@@ -364,6 +365,10 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
       return;
     }
 
+    if (options.role === "viewer") {
+      suppressNextViewerSocketCloseInactiveCause = true;
+    }
+
     await new Promise<void>((resolve) => {
       socketToClose.once("close", () => resolve());
       socketToClose.close();
@@ -383,8 +388,11 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
 
       socket.on("close", (code, reason) => {
         const reasonBytes = closeReasonByteLength(reason);
+        const suppressViewerSocketClosedStatus = suppressNextViewerSocketCloseInactiveCause;
+        suppressNextViewerSocketCloseInactiveCause = false;
         sessionState.localPeerDisconnected = true;
         invalidateViewerSignalProbe(sessionState);
+        recordViewerSocketClosedStatus(options, sessionState, suppressViewerSocketClosedStatus);
         deactivateHostIndicator(options, sessionState, "socket-closed");
         const event = { direction: "closed", code, reason: REDACTED_EVENT_VALUE, reasonBytes } as const;
         options.onEvent?.(event);
@@ -660,6 +668,19 @@ function resetConnectionScopedSessionState(sessionState: AgentShellSessionState)
   sessionState.viewerSignalProbeGeneration = 0;
   sessionState.hostSignalProbeAckAuthorizationId = undefined;
   sessionState.hostIndicator = undefined;
+}
+
+function recordViewerSocketClosedStatus(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  suppressed: boolean
+): void {
+  if (options.role !== "viewer" || suppressed || sessionState.remotePeerDisconnected) {
+    return;
+  }
+
+  sessionState.viewerAuthorization = undefined;
+  sessionState.viewerLocalInactiveCause = "socket-closed";
 }
 
 async function handleMessage(

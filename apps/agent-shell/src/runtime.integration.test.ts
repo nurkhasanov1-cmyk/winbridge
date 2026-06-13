@@ -2767,6 +2767,78 @@ describe("agent shell consent workflow", () => {
     );
   });
 
+  it("reports active viewer status as inactive after local socket close", async () => {
+    const { relay, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["screen:view"],
+      visibleToHost: true
+    });
+    const viewer = await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    const sentCountBeforeRelayStop = viewerEvents.filter((event) => event.direction === "sent").length;
+
+    await relay.stop();
+    forgetRelayRuntime(relay);
+    await waitForClosedEvent(viewerEvents);
+
+    const statusAfterSocketClose = viewer.getViewerStatus();
+    expect(statusAfterSocketClose).toEqual({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0,
+      localInactiveCause: "socket-closed"
+    });
+    expect(statusAfterSocketClose).not.toHaveProperty("authorizationId");
+    expect(statusAfterSocketClose).not.toHaveProperty("authorizationStatus");
+    expect(statusAfterSocketClose).not.toHaveProperty("remoteDisconnectReasonCode");
+    expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
+      sentCountBeforeRelayStop
+    );
+  });
+
+  it("does not replace trusted remote disconnect status after later socket close", async () => {
+    const { host, relay, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["screen:view"],
+      visibleToHost: true
+    });
+    const viewer = await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const activeState = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    if (activeState.type !== "session-authorization-state") {
+      throw new Error("Expected active authorization state");
+    }
+
+    host.disconnect();
+    const disconnectNotice = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "peer-disconnected" && message.peerId === "host-1"
+    );
+    if (disconnectNotice.type !== "peer-disconnected") {
+      throw new Error("Expected trusted host disconnect notice");
+    }
+
+    await relay.stop();
+    forgetRelayRuntime(relay);
+    await waitForClosedEvent(viewerEvents);
+
+    expect(viewer.getViewerStatus()).toEqual({
+      state: "inactive",
+      authorizationId: activeState.authorizationId,
+      authorizationStatus: "active",
+      visibleToHost: false,
+      permissionCount: 0,
+      remoteDisconnectReasonCode: disconnectNotice.reasonCode
+    });
+  });
+
   it("leaves the viewer runtime locally and reports inactive viewer status", async () => {
     const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
@@ -11299,6 +11371,13 @@ async function startViewer(
   await viewer.start();
   agentRuntimes.push(viewer);
   return viewer;
+}
+
+function forgetRelayRuntime(relay: RelayRuntime): void {
+  const index = relayRuntimes.indexOf(relay);
+  if (index !== -1) {
+    relayRuntimes.splice(index, 1);
+  }
 }
 
 async function startRawViewer(relayUrl: string): Promise<WebSocket> {
