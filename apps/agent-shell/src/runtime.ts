@@ -146,6 +146,7 @@ export type AgentShellRuntime = {
   stop(): Promise<void>;
   disconnect(): void;
   pause(): void;
+  revokePermission(permission: Permission): void;
   resume(): void;
   send(message: ProtocolEnvelope): void;
 };
@@ -183,6 +184,11 @@ const AGENT_SHELL_LOCAL_DISCONNECT_ROLE_ERROR_MESSAGE =
   "Agent shell local disconnect control is only valid for host runtimes";
 const AGENT_SHELL_LOCAL_DISCONNECT_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell local disconnect control requires active visible host authorization";
+const AGENT_SHELL_REVOKE_ROLE_ERROR_MESSAGE = "Agent shell revoke control is only valid for host runtimes";
+const AGENT_SHELL_REVOKE_AUTHORIZATION_ERROR_MESSAGE =
+  "Agent shell revoke control requires active or paused visible host authorization";
+const AGENT_SHELL_REVOKE_PERMISSION_ERROR_MESSAGE =
+  "Agent shell revoke control requires a currently granted host permission";
 const AGENT_SHELL_PAUSE_ROLE_ERROR_MESSAGE = "Agent shell pause control is only valid for host runtimes";
 const AGENT_SHELL_PAUSE_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell pause control requires active visible host authorization";
@@ -400,6 +406,40 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
           sessionState,
           options.hostPauseReason ?? "Host paused session",
           Boolean(options.hostPauseReason)
+        );
+      } catch (error) {
+        reportRuntimeError(options, error);
+        throw createSanitizedRuntimeError();
+      }
+    },
+
+    revokePermission(permission: Permission) {
+      if (!socket) {
+        throw new Error("Agent shell runtime is not started");
+      }
+
+      assertRuntimeRevokePermission(permission);
+
+      if (sessionState.localPeerDisconnected) {
+        throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      if (sessionState.remotePeerDisconnected) {
+        throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      assertLocalRuntimeSocketOpen(socket);
+      const { authorization, workflowState } = getLocalHostRevokeControl(options, sessionState, permission);
+      try {
+        revokeHostPermission(
+          socket,
+          options,
+          authorization.authorizationId,
+          authorization.expiresAt,
+          workflowState,
+          sessionState,
+          permission,
+          options.hostRevokeReason ?? `Host revoked ${permission}`
         );
       } catch (error) {
         reportRuntimeError(options, error);
@@ -1923,83 +1963,125 @@ function scheduleHostRevoke(
   const reason = options.hostRevokeReason ?? `Host revoked ${revokedPermission}`;
 
   scheduleTimer(() => {
-    if (workflowState.terminalStatus) {
-      options.logger?.log(`[winbridge-agent] revoke skipped because authorization is ${workflowState.terminalStatus}`);
+    if (!canSendHostRevoke(socket, options, workflowState, sessionState, expiresAt, revokedPermission)) {
       return;
     }
 
-    if (!canSendDelayedHostWorkflow(socket, options, sessionState, "revoke")) {
-      return;
-    }
-
-    if (hasAuthorizationExpired(expiresAt)) {
-      options.logger?.log("[winbridge-agent] revoke skipped because authorization is expired");
-      return;
-    }
-
-    const remainingPermissions = workflowState.permissions.filter(
-      (permission) => permission !== revokedPermission
-    );
-    const finalGrantRevoked = remainingPermissions.length === 0;
-    const auditEvent = prepareDevelopmentAuditEvent(options, {
-      action: "agent-shell.permission.revoked",
-      outcome: "accepted",
-      detail: {
-        revokedPermission,
-        remainingPermissionCount: remainingPermissions.length,
-        finalGrantRevoked
-      }
-    });
-    workflowState.permissions = remainingPermissions;
-
-    if (finalGrantRevoked) {
-      workflowState.terminalStatus = "revoked";
-    }
-
-    setHostAuthorizationSnapshot(sessionState, {
-      authorizationId,
-      status: finalGrantRevoked ? "revoked" : workflowState.paused ? "paused" : "active",
-      visibleToHost: true,
-      permissions: remainingPermissions,
-      expiresAt
-    });
-    emitHostIndicatorFromAuthorization(
+    revokeHostPermission(
+      socket,
       options,
+      authorizationId,
+      expiresAt,
+      workflowState,
       sessionState,
-      finalGrantRevoked ? "revoked" : "permission-revoked"
-    );
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-control",
-      authorizationId,
-      actorPeerId: options.peerId,
-      action: "revoke-permission",
-      permission: revokedPermission,
-      reason
-    });
-
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "permission-revoked",
-      authorizationId,
-      actorPeerId: options.peerId,
       revokedPermission,
       reason
-    });
-
-    sendProtocol(socket, options, {
-      ...createMessageBase(options.sessionId),
-      type: "session-authorization-state",
-      authorizationId,
-      actorPeerId: options.peerId,
-      status: finalGrantRevoked ? "revoked" : workflowState.paused ? "paused" : "active",
-      visibleToHost: true,
-      permissions: remainingPermissions,
-      expiresAt,
-      reason
-    });
-    sendProtocol(socket, options, auditEvent);
+    );
   }, options.hostRevokeAfterMs);
+}
+
+function canSendHostRevoke(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  workflowState: HostWorkflowState,
+  sessionState: AgentShellSessionState,
+  expiresAt: string,
+  revokedPermission: Permission
+): boolean {
+  if (workflowState.terminalStatus) {
+    options.logger?.log(`[winbridge-agent] revoke skipped because authorization is ${workflowState.terminalStatus}`);
+    return false;
+  }
+
+  if (!workflowState.permissions.includes(revokedPermission)) {
+    options.logger?.log("[winbridge-agent] revoke skipped because permission is not granted");
+    return false;
+  }
+
+  if (!canSendDelayedHostWorkflow(socket, options, sessionState, "revoke")) {
+    return false;
+  }
+
+  if (hasAuthorizationExpired(expiresAt)) {
+    options.logger?.log("[winbridge-agent] revoke skipped because authorization is expired");
+    return false;
+  }
+
+  return true;
+}
+
+function revokeHostPermission(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  authorizationId: string,
+  expiresAt: string,
+  workflowState: HostWorkflowState,
+  sessionState: AgentShellSessionState,
+  revokedPermission: Permission,
+  reason: string
+): void {
+  const remainingPermissions = workflowState.permissions.filter(
+    (permission) => permission !== revokedPermission
+  );
+  const finalGrantRevoked = remainingPermissions.length === 0;
+  const auditEvent = prepareDevelopmentAuditEvent(options, {
+    action: "agent-shell.permission.revoked",
+    outcome: "accepted",
+    detail: {
+      revokedPermission,
+      remainingPermissionCount: remainingPermissions.length,
+      finalGrantRevoked
+    }
+  });
+  workflowState.permissions = remainingPermissions;
+
+  if (finalGrantRevoked) {
+    workflowState.terminalStatus = "revoked";
+  }
+
+  setHostAuthorizationSnapshot(sessionState, {
+    authorizationId,
+    status: finalGrantRevoked ? "revoked" : workflowState.paused ? "paused" : "active",
+    visibleToHost: true,
+    permissions: remainingPermissions,
+    expiresAt
+  });
+  emitHostIndicatorFromAuthorization(
+    options,
+    sessionState,
+    finalGrantRevoked ? "revoked" : "permission-revoked"
+  );
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-control",
+    authorizationId,
+    actorPeerId: options.peerId,
+    action: "revoke-permission",
+    permission: revokedPermission,
+    reason
+  });
+
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "permission-revoked",
+    authorizationId,
+    actorPeerId: options.peerId,
+    revokedPermission,
+    reason
+  });
+
+  sendProtocol(socket, options, {
+    ...createMessageBase(options.sessionId),
+    type: "session-authorization-state",
+    authorizationId,
+    actorPeerId: options.peerId,
+    status: finalGrantRevoked ? "revoked" : workflowState.paused ? "paused" : "active",
+    visibleToHost: true,
+    permissions: remainingPermissions,
+    expiresAt,
+    reason
+  });
+  sendProtocol(socket, options, auditEvent);
 }
 
 function canSendHostPause(
@@ -2413,6 +2495,43 @@ function scheduleHostDisconnect(
       "disconnect simulation closing local relay connection"
     );
   }, options.hostDisconnectAfterMs);
+}
+
+function getLocalHostRevokeControl(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  revokedPermission: Permission
+): LocalHostWorkflowControl {
+  if (options.role !== "host") {
+    throw new Error(AGENT_SHELL_REVOKE_ROLE_ERROR_MESSAGE);
+  }
+
+  const authorization = sessionState.hostAuthorization;
+  const workflowState = sessionState.hostWorkflowState;
+  if (!workflowState || workflowState.terminalStatus || !hasLocalHostRevokeAuthorization(authorization)) {
+    throw new Error(AGENT_SHELL_REVOKE_AUTHORIZATION_ERROR_MESSAGE);
+  }
+
+  if (
+    !workflowState.permissions.includes(revokedPermission) ||
+    !authorization.permissions.includes(revokedPermission)
+  ) {
+    throw new Error(AGENT_SHELL_REVOKE_PERMISSION_ERROR_MESSAGE);
+  }
+
+  return { authorization, workflowState };
+}
+
+function hasLocalHostRevokeAuthorization(
+  snapshot: RuntimeAuthorizationSnapshot | undefined
+): snapshot is VisibleRuntimeAuthorizationSnapshot {
+  return Boolean(
+    snapshot &&
+      snapshot.visibleToHost &&
+      (snapshot.status === "active" || snapshot.status === "paused") &&
+      snapshot.expiresAt &&
+      !hasAuthorizationExpired(snapshot.expiresAt)
+  );
 }
 
 function getLocalHostPauseControl(

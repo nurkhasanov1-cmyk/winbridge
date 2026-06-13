@@ -2626,6 +2626,273 @@ describe("agent shell consent workflow", () => {
     });
   });
 
+  it("revokes the only granted permission through direct host control", async () => {
+    const hostAuditSink = new MemoryAuditSink();
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostAuditSink,
+      hostDecision: "approve",
+      hostRevokeReason: "private direct revoke reason",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    const activeState = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    host.revokePermission("screen:view");
+
+    const revokeControl = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-control" && message.action === "revoke-permission"
+    );
+    const revoked = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "permission-revoked"
+    );
+    const revokedState = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "revoked"
+    );
+    const revokeAudit = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "audit-event" &&
+        message.action === "agent-shell.permission.revoked"
+    );
+    const inactiveIndicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.state === "inactive" && event.cause === "revoked"
+    );
+
+    expect(revokeControl).toMatchObject({
+      type: "session-control",
+      authorizationId: activeState.type === "session-authorization-state" ? activeState.authorizationId : "",
+      actorPeerId: "host-1",
+      action: "revoke-permission",
+      permission: "screen:view",
+      reason: "[REDACTED]"
+    });
+    expect(revoked).toMatchObject({
+      type: "permission-revoked",
+      authorizationId: activeState.type === "session-authorization-state" ? activeState.authorizationId : "",
+      revokedPermission: "screen:view",
+      reason: "[REDACTED]"
+    });
+    expect(revokedState).toMatchObject({
+      type: "session-authorization-state",
+      authorizationId: activeState.type === "session-authorization-state" ? activeState.authorizationId : "",
+      status: "revoked",
+      visibleToHost: true,
+      permissions: []
+    });
+    expect(revokeAudit).toMatchObject({
+      type: "audit-event",
+      outcome: "accepted",
+      detail: {
+        revokedPermission: "screen:view",
+        remainingPermissionCount: 0,
+        finalGrantRevoked: true
+      }
+    });
+    expect(inactiveIndicator).toMatchObject({
+      direction: "indicator",
+      state: "inactive",
+      authorizationStatus: "revoked",
+      visibleToHost: false,
+      permissionCount: 0,
+      cause: "revoked"
+    });
+    expect(messageIndex(viewerEvents, revokeControl)).toBeLessThan(messageIndex(viewerEvents, revoked));
+    expect(messageIndex(viewerEvents, revoked)).toBeLessThan(messageIndex(viewerEvents, revokedState));
+    expect(hostAuditSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved",
+      "agent-shell.authorization.active",
+      "agent-shell.permission.revoked"
+    ]);
+    expect(JSON.stringify(hostAuditSink.records())).not.toContain("private direct revoke reason");
+    expect(JSON.stringify(viewerEvents)).not.toContain("private direct revoke reason");
+    expect(JSON.stringify(hostAuditSink.records())).not.toContain("123-456");
+  });
+
+  it("keeps remaining permissions paused after direct host revocation while paused", async () => {
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view", "input:pointer"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    host.pause();
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "paused"
+    );
+    host.revokePermission("screen:view");
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "permission-revoked" && message.revokedPermission === "screen:view"
+    );
+    const partialState = await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "paused" &&
+        !message.permissions.includes("screen:view")
+    );
+    const indicator = await waitForIndicatorEvent(
+      hostEvents,
+      (event) => event.cause === "permission-revoked"
+    );
+
+    expect(partialState).toMatchObject({
+      type: "session-authorization-state",
+      status: "paused",
+      visibleToHost: true,
+      permissions: ["input:pointer"]
+    });
+    expect(indicator).toMatchObject({
+      direction: "indicator",
+      state: "paused",
+      authorizationStatus: "paused",
+      visibleToHost: true,
+      permissionCount: 1,
+      cause: "permission-revoked"
+    });
+  });
+
+  it("rejects direct host revocation before visible authorization", async () => {
+    const hostAuditSink = new MemoryAuditSink();
+    const { host, hostEvents } = await startRelayAndHost({
+      hostAuditSink
+    });
+
+    await waitForMessage(
+      hostEvents,
+      (message) => message.type === "relay-ready" && message.peerId === "host-1"
+    );
+
+    expect(() => host.revokePermission("screen:view")).toThrow(
+      "Agent shell revoke control requires active or paused visible host authorization"
+    );
+    await delay(50);
+
+    expect(
+      hostEvents.some(
+        (event) =>
+          event.direction === "sent" &&
+          (event.message.type === "session-control" ||
+            event.message.type === "permission-revoked" ||
+            event.message.type === "audit-event")
+      )
+    ).toBe(false);
+    expect(hostAuditSink.records()).toHaveLength(0);
+  });
+
+  it("rejects direct host revocation for permissions that are not granted", async () => {
+    const hostAuditSink = new MemoryAuditSink();
+    const { relay, host, viewerEvents } = await startRelayAndHost({
+      hostAuditSink,
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["input:pointer"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    expect(() => host.revokePermission("screen:view")).toThrow(
+      "Agent shell revoke control requires a currently granted host permission"
+    );
+    await delay(50);
+
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "received" &&
+          (event.message.type === "permission-revoked" ||
+            (event.message.type === "session-control" &&
+              event.message.action === "revoke-permission") ||
+            (event.message.type === "audit-event" &&
+              event.message.action === "agent-shell.permission.revoked"))
+      )
+    ).toBe(false);
+    expect(hostAuditSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved",
+      "agent-shell.authorization.active"
+    ]);
+  });
+
+  it("rejects direct revocation controls for viewer runtimes", async () => {
+    const { relay, viewerEvents } = await startRelayAndHost();
+    const viewer = await startViewer(relay.url(), [], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
+    );
+
+    expect(() => viewer.revokePermission("screen:view")).toThrow(
+      "Agent shell revoke control is only valid for host runtimes"
+    );
+    await delay(50);
+
+    expect(
+      viewerEvents.some(
+        (event) =>
+          event.direction === "sent" &&
+          (event.message.type === "permission-revoked" ||
+            (event.message.type === "session-control" &&
+              event.message.action === "revoke-permission"))
+      )
+    ).toBe(false);
+  });
+
+  it("shares direct revocation state with delayed revoke timers", async () => {
+    const { relay, host, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostRevokeAfterMs: 40,
+      hostRevokePermission: "screen:view",
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view", "input:pointer"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    host.revokePermission("screen:view");
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "permission-revoked" && message.revokedPermission === "screen:view"
+    );
+    await delay(90);
+
+    const revokeControls = viewerEvents.filter(
+      (event) =>
+        event.direction === "received" &&
+        event.message.type === "session-control" &&
+        event.message.action === "revoke-permission"
+    );
+    const revokedMessages = viewerEvents.filter(
+      (event) => event.direction === "received" && event.message.type === "permission-revoked"
+    );
+    const revokeAudits = viewerEvents.filter(
+      (event) =>
+        event.direction === "received" &&
+        event.message.type === "audit-event" &&
+        event.message.action === "agent-shell.permission.revoked"
+    );
+    expect(revokeControls).toHaveLength(1);
+    expect(revokedMessages).toHaveLength(1);
+    expect(revokeAudits).toHaveLength(1);
+  });
+
   it("does not send revoke messages when visible active state is withheld", async () => {
     const { relay, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
@@ -8660,6 +8927,66 @@ describe("agent shell consent workflow", () => {
               event.message.status === "revoked") ||
             (event.message.type === "audit-event" &&
               event.message.action === "agent-shell.permission.revoked"))
+      )
+    ).toBe(false);
+  });
+
+  it("does not send direct revoke messages when revoke audit persistence fails", async () => {
+    const backingSink = new MemoryAuditSink();
+    const hostLogs: string[] = [];
+    const rawErrorMessage = "direct revoke audit sink failed with raw-token";
+    const failingSink: AuditSink = {
+      write: (input) => {
+        if (input.action === "agent-shell.permission.revoked") {
+          throw new Error(rawErrorMessage);
+        }
+
+        return backingSink.write(input);
+      }
+    };
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostAuditSink: failingSink,
+      hostDecision: "approve",
+      hostLogger: captureLogger(hostLogs),
+      visibleToHost: true
+    });
+    await startViewer(relay.url(), ["screen:view"], viewerEvents);
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active"
+    );
+    expect(() => host.revokePermission("screen:view")).toThrow("Agent shell runtime error");
+    const errorEvent = await waitForRuntimeError(hostEvents);
+    await delay(50);
+
+    const protocolEvents = [...hostEvents, ...viewerEvents].filter(
+      (event): event is Extract<AgentShellEvent, { direction: "received" | "sent" }> =>
+        event.direction === "received" || event.direction === "sent"
+    );
+
+    expect(errorEvent.error.message).toBe("Agent shell runtime error");
+    expect(errorEvent.error.stack).toBeUndefined();
+    expect(errorEvent.messageBytes).toBe(Buffer.byteLength(rawErrorMessage));
+    expect(JSON.stringify(errorEvent)).not.toContain(rawErrorMessage);
+    expect(hostLogs.join("\n")).not.toContain(rawErrorMessage);
+    expect(hostLogs.join("\n")).not.toContain("raw-token");
+    expect(backingSink.records().map((record) => record.action)).toEqual([
+      "agent-shell.authorization.approved",
+      "agent-shell.authorization.active"
+    ]);
+    expect(
+      protocolEvents.some(
+        (event) =>
+          event.message.type === "permission-revoked" ||
+          (event.message.type === "session-control" &&
+            event.message.action === "revoke-permission") ||
+          (event.message.type === "session-authorization-state" &&
+            event.message.status === "revoked") ||
+          (event.message.type === "audit-event" &&
+            event.message.action === "agent-shell.permission.revoked")
       )
     ).toBe(false);
   });
