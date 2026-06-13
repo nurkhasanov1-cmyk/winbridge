@@ -1483,4 +1483,70 @@ describe("session authorization state machine", () => {
       })
     ).toThrow();
   });
+
+  it("rejects diagnostics permissions until an explicit diagnostics capability exists", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const diagnosticsPermissions = ["diagnostics:view"] as unknown as Parameters<
+      typeof createPendingSessionAuthorization
+    >[0]["requestedPermissions"];
+    const diagnosticsGrant = ["diagnostics:view"] as unknown as Parameters<
+      typeof approveSessionAuthorization
+    >[1]["grantedPermissions"];
+    const diagnosticsPermission = "diagnostics:view" as unknown as Parameters<
+      typeof revokeSessionPermission
+    >[1]["permission"];
+
+    expect(() =>
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: diagnosticsPermissions,
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: diagnosticsGrant,
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...pending(),
+        permissions: diagnosticsPermissions
+      })
+    ).toThrow();
+    expect(() =>
+      assertConsentBoundGrant({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        permissions: diagnosticsPermissions,
+        requiresHostApproval: true,
+        visibleSessionRequired: true,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        auditId: "audit-demo"
+      })
+    ).toThrow();
+    expect(() =>
+      revokeSessionPermission(active, {
+        permission: diagnosticsPermission,
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      assertSessionActionAuthorized({
+        authorization: active,
+        permission: diagnosticsPermission,
+        now: baseTime
+      })
+    ).toThrow();
+  });
 });

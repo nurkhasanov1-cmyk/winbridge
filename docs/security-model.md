@@ -65,6 +65,8 @@ Remote assistance authorization is deny-by-default:
 
 Pairing is only a prerequisite relationship. It never grants screen viewing, pointer input, keyboard input, clipboard access, file transfer, or diagnostics by itself.
 
+Diagnostics access is not part of the current permission vocabulary. Diagnostics-shaped permissions such as `diagnostics:view` are rejected in authorization requests, approval grants, authorization state, revocation controls, consent-bound grants, and direct action checks until a dedicated OpenSpec change and security review define consent, visibility, revocation, audit, abuse-case, and data-handling requirements.
+
 Pending, approved, and denied authorization records must not report host visible active-session state. Host visibility begins at activation, not at request, approval, or denial.
 Pending, approved, and denied authorization records must also reject lifecycle timestamps from impossible later states so audit history cannot imply hidden activation, pause, revocation, termination, or expiration.
 Authorization record timestamps must be ordered so `updatedAt` is not earlier than `createdAt`, `expiresAt` is after `createdAt`, and lifecycle timestamps stay within the record's creation-to-update window.

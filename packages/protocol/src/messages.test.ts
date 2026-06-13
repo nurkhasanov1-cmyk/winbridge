@@ -2041,6 +2041,59 @@ describe("protocol envelopes", () => {
     ).toThrow();
   });
 
+  it("rejects diagnostics permissions in authorization protocol messages", () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const messages = [
+      {
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["diagnostics:view"]
+      },
+      {
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-decision",
+        authorizationId: "authz-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        decision: "approved",
+        grantedPermissions: ["diagnostics:view"],
+        expiresAt
+      },
+      {
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-state",
+        authorizationId: "authz-demo",
+        actorPeerId: "host-1",
+        status: "active",
+        visibleToHost: true,
+        permissions: ["diagnostics:view"],
+        expiresAt
+      },
+      {
+        ...createMessageBase("session-demo"),
+        type: "permission-revoked",
+        authorizationId: "authz-demo",
+        actorPeerId: "host-1",
+        revokedPermission: "diagnostics:view",
+        reason: "Host revoked diagnostics"
+      },
+      {
+        ...createMessageBase("session-demo"),
+        type: "session-control",
+        authorizationId: "authz-demo",
+        actorPeerId: "host-1",
+        action: "revoke-permission",
+        permission: "diagnostics:view",
+        reason: "Host revoked diagnostics"
+      }
+    ];
+
+    for (const message of messages) {
+      expect(() => parseProtocolEnvelope(message)).toThrow();
+    }
+  });
+
   it("accepts JSON-compatible audit-event detail values", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),
