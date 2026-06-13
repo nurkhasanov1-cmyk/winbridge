@@ -104,6 +104,17 @@ describe("agent shell arguments", () => {
     ).toBe(2147483647);
   });
 
+  it("parses viewer local disconnect mode for viewer runtimes without requested permissions", () => {
+    expect(
+      parseArgs(["viewer", "--viewer-disconnect-after-ms", "0"], {}, 42)
+        .viewerDisconnectAfterMs
+    ).toBe(0);
+    expect(
+      parseArgs(["viewer", "--viewer-disconnect-after-ms", "2147483647"], {}, 42)
+        .viewerDisconnectAfterMs
+    ).toBe(2147483647);
+  });
+
   it("parses absolute websocket relay urls", () => {
     expect(parseArgs(["viewer", "--relay", "ws://127.0.0.1:8787"], {}, 42).relayUrl).toBe(
       "ws://127.0.0.1:8787/"
@@ -193,6 +204,14 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("rejects malformed viewer local disconnect delay values", () => {
+    for (const delayMs of ["-1", "1.5", "Infinity", "01", "2147483648"]) {
+      expect(() =>
+        parseArgs(["viewer", "--viewer-disconnect-after-ms", delayMs], {}, 42)
+      ).toThrow(AgentShellUsageError);
+    }
+  });
+
   it("rejects interactive host consent prompt for viewer or static decisions", () => {
     expect(() => parseArgs(["viewer", "--host-consent-prompt", "true"], {}, 42)).toThrow(
       AgentShellUsageError
@@ -248,6 +267,12 @@ describe("agent shell arguments", () => {
 
   it("rejects viewer status print mode for host runtimes", () => {
     expect(() => parseArgs(["host", "--viewer-status-after-ms", "0"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+  });
+
+  it("rejects viewer local disconnect mode for host runtimes", () => {
+    expect(() => parseArgs(["host", "--viewer-disconnect-after-ms", "0"], {}, 42)).toThrow(
       AgentShellUsageError
     );
   });

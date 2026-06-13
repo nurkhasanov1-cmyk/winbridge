@@ -26,6 +26,7 @@ import {
   type HostDecision,
   type HostDecisionProvider
 } from "./runtime.js";
+import { scheduleViewerLocalDisconnect } from "./viewer-disconnect.js";
 
 type TestLogger = {
   log(message: string): void;
@@ -9317,6 +9318,56 @@ describe("agent shell consent workflow", () => {
     await delay(50);
 
     expect(viewerEvents.some((event) => event.direction === "closed")).toBe(false);
+  });
+
+  it("closes the viewer connection through scheduled local disconnect", async () => {
+    const viewerAuditSink = new MemoryAuditSink();
+    const { relay, hostEvents, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: true
+    });
+    const viewer = await startViewer(
+      relay.url(),
+      ["screen:view"],
+      viewerEvents,
+      silentLogger,
+      viewerAuditSink
+    );
+
+    await waitForMessage(
+      viewerEvents,
+      (message) =>
+        message.type === "session-authorization-state" &&
+        message.status === "active"
+    );
+    const sentCountAtDisconnectSchedule = viewerEvents.filter(
+      (event) => event.direction === "sent"
+    ).length;
+
+    scheduleViewerLocalDisconnect(viewer, 10);
+
+    const closed = await waitForClosedEvent(viewerEvents);
+    const hostDisconnectNotice = await waitForMessage(
+      hostEvents,
+      (message) => message.type === "peer-disconnected" && message.peerId === "viewer-1"
+    );
+
+    expect(closed.direction).toBe("closed");
+    expect(hostDisconnectNotice).toMatchObject({
+      type: "peer-disconnected",
+      peerId: "viewer-1",
+      role: "viewer",
+      reasonCode: "peer-closed"
+    });
+    expect(
+      viewerEvents.some(
+        (event) => event.direction === "sent" && event.message.type === "peer-disconnected"
+      )
+    ).toBe(false);
+    expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
+      sentCountAtDisconnectSchedule
+    );
+    expect(viewerAuditSink.records()).toHaveLength(0);
   });
 
   it("closes the host connection after visible disconnect simulation", async () => {

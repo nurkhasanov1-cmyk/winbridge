@@ -48,10 +48,11 @@ export type AgentShellArgs = {
   hostDisconnectAfterMs?: number;
   viewerSignalProbeAfterMs?: number;
   viewerStatusAfterMs?: number;
+  viewerDisconnectAfterMs?: number;
 };
 
 export const AGENT_SHELL_USAGE =
-  "Usage: npm run dev:agent -- <host|viewer> [--relay ws://localhost:8787] [--session demo] [--pairing 123-456] [--peer peer-id] [--device device-id] [--name display-name] [--token token] [--audit-log logs\\agent-audit.jsonl] [--request screen:view,input:pointer] [--grant screen:view,input:pointer] [--host-decision none|approve|deny] [--host-consent-prompt true|false] [--host-control-prompt true|false] [--host-signal-probe-ack true|false] [--host-consent-timeout-ms 60000] [--visible-session true|false] [--authorization-ttl-ms 600000] [--revoke-after-ms 1000] [--revoke-permission screen:view] [--revoke-reason reason] [--pause-after-ms 1000] [--pause-reason reason] [--resume-after-ms 1000] [--resume-reason reason] [--terminate-after-ms 1000] [--terminate-reason reason] [--disconnect-after-ms 1000] [--viewer-signal-probe-after-ms 1000] [--viewer-status-after-ms 1000]";
+  "Usage: npm run dev:agent -- <host|viewer> [--relay ws://localhost:8787] [--session demo] [--pairing 123-456] [--peer peer-id] [--device device-id] [--name display-name] [--token token] [--audit-log logs\\agent-audit.jsonl] [--request screen:view,input:pointer] [--grant screen:view,input:pointer] [--host-decision none|approve|deny] [--host-consent-prompt true|false] [--host-control-prompt true|false] [--host-signal-probe-ack true|false] [--host-consent-timeout-ms 60000] [--visible-session true|false] [--authorization-ttl-ms 600000] [--revoke-after-ms 1000] [--revoke-permission screen:view] [--revoke-reason reason] [--pause-after-ms 1000] [--pause-reason reason] [--resume-after-ms 1000] [--resume-reason reason] [--terminate-after-ms 1000] [--terminate-reason reason] [--disconnect-after-ms 1000] [--viewer-signal-probe-after-ms 1000] [--viewer-status-after-ms 1000] [--viewer-disconnect-after-ms 1000]";
 
 const knownOptions = new Set([
   "relay",
@@ -82,7 +83,8 @@ const knownOptions = new Set([
   "terminate-reason",
   "disconnect-after-ms",
   "viewer-signal-probe-after-ms",
-  "viewer-status-after-ms"
+  "viewer-status-after-ms",
+  "viewer-disconnect-after-ms"
 ]);
 export class AgentShellUsageError extends Error {
   constructor() {
@@ -127,6 +129,10 @@ export function parseArgs(
     role,
     options.get("viewer-status-after-ms")
   );
+  const viewerDisconnectAfterMs = parseViewerDisconnectAfterMs(
+    role,
+    options.get("viewer-disconnect-after-ms")
+  );
 
   return {
     role,
@@ -163,7 +169,8 @@ export function parseArgs(
     hostTerminateReason: parseOptionalReason(options.get("terminate-reason")),
     hostDisconnectAfterMs: parseOptionalTimerDelayMs(options.get("disconnect-after-ms")),
     viewerSignalProbeAfterMs,
-    viewerStatusAfterMs
+    viewerStatusAfterMs,
+    viewerDisconnectAfterMs
   };
 }
 
@@ -429,6 +436,22 @@ function parseViewerSignalProbeAfterMs(
 }
 
 function parseViewerStatusAfterMs(role: SessionRole, raw: string | undefined): number | undefined {
+  const delayMs = parseOptionalTimerDelayMs(raw);
+  if (delayMs === undefined) {
+    return undefined;
+  }
+
+  if (role !== "viewer") {
+    throw new AgentShellUsageError();
+  }
+
+  return delayMs;
+}
+
+function parseViewerDisconnectAfterMs(
+  role: SessionRole,
+  raw: string | undefined
+): number | undefined {
   const delayMs = parseOptionalTimerDelayMs(raw);
   if (delayMs === undefined) {
     return undefined;

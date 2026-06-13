@@ -199,6 +199,14 @@ npm run dev:agent -- viewer --session demo --pairing 123-456 --viewer-status-aft
 
 `--viewer-status-after-ms` is viewer-only, accepts an exact integer delay from `0` through `2147483647`, and does not require requested permissions. It reads only local viewer status and does not start signaling, send protocol messages, emit workflow audit events, grant permissions, or invoke host controls.
 
+Simulate a viewer leaving the session locally:
+
+```powershell
+npm run dev:agent -- viewer --session demo --pairing 123-456 --viewer-disconnect-after-ms 5000
+```
+
+`--viewer-disconnect-after-ms` is viewer-only, accepts an exact integer delay from `0` through `2147483647`, and does not require requested permissions or active authorization. It stops only the local viewer runtime; the viewer does not send forged `peer-disconnected`, lifecycle, signal, control, or workflow audit messages. The relay observes the socket close and notifies the remaining host.
+
 Persist development host workflow audit records as JSONL:
 
 ```powershell
