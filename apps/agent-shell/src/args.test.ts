@@ -216,11 +216,45 @@ describe("agent shell arguments", () => {
     }
   });
 
+  it("rejects viewer host-only workflow options without exposing raw values", () => {
+    const rawReason = "Authorization: Bearer raw-viewer-host-option-token";
+
+    for (const [option, value] of [
+      ["terminate-reason", rawReason],
+      ["disconnect-reason", rawReason],
+      ["pause-reason", rawReason],
+      ["resume-reason", rawReason],
+      ["revoke-reason", rawReason]
+    ] as const) {
+      try {
+        parseArgs(["viewer", `--${option}`, value], {}, 42);
+        throw new Error("Expected viewer host-only workflow option to be rejected");
+      } catch (error) {
+        expect(error, option).toBeInstanceOf(AgentShellUsageError);
+        expect((error as Error).message, option).not.toContain(rawReason);
+        expect((error as Error).message, option).not.toContain("raw-viewer-host-option-token");
+      }
+    }
+  });
+
   it("rejects explicit viewer request options for host runtimes", () => {
     expect(() => parseArgs(["host", "--request", "screen:view"], {}, 42)).toThrow(AgentShellUsageError);
     expect(() => parseArgs(["host", "--request", "screen:view,input:pointer"], {}, 42)).toThrow(
       AgentShellUsageError
     );
+  });
+
+  it("rejects host viewer-request options without exposing raw request text", () => {
+    const rawRequest = "screen:view,Authorization:Bearer-raw-host-request-token";
+
+    try {
+      parseArgs(["host", "--request", rawRequest], {}, 42);
+      throw new Error("Expected host viewer-request option to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AgentShellUsageError);
+      expect((error as Error).message).not.toContain(rawRequest);
+      expect((error as Error).message).not.toContain("raw-host-request-token");
+    }
   });
 
   it("keeps viewer-only workflow options available for viewer runtimes", () => {
