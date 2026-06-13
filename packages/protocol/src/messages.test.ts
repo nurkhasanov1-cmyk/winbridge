@@ -1812,6 +1812,76 @@ describe("protocol envelopes", () => {
     }
   });
 
+  it("rejects unsafe audit-event detail keys when parsing and encoding without raw key leakage", () => {
+    const cases: Array<{
+      name: string;
+      detail: Record<string, unknown>;
+      rawKey: string;
+      message: string;
+    }> = [
+      {
+        name: "control-character key",
+        rawKey: "unsafe\nprivate-audit-detail-key",
+        detail: {
+          "unsafe\nprivate-audit-detail-key": "value"
+        },
+        message: "Audit detail keys must not contain ASCII control characters"
+      },
+      {
+        name: "bidi-control nested key",
+        rawKey: "unsafe\u202eprivate-audit-detail-key",
+        detail: {
+          nested: {
+            "unsafe\u202eprivate-audit-detail-key": "value"
+          }
+        },
+        message: "Audit detail keys must not contain Unicode bidi or zero-width formatting controls"
+      },
+      {
+        name: "zero-width array object key",
+        rawKey: "unsafe\ufeffprivate-audit-detail-key",
+        detail: {
+          attempts: [
+            {
+              "unsafe\ufeffprivate-audit-detail-key": "value"
+            }
+          ]
+        },
+        message: "Audit detail keys must not contain Unicode bidi or zero-width formatting controls"
+      }
+    ];
+
+    for (const { detail, message, name, rawKey } of cases) {
+      const messageWithUnsafeDetail = {
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit-demo",
+        actorPeerId: "host-1",
+        action: "agent-shell.test",
+        outcome: "failed",
+        detail
+      } as const;
+
+      for (const operation of [
+        () => parseProtocolEnvelope(messageWithUnsafeDetail),
+        () =>
+          encodeProtocolEnvelope(
+            messageWithUnsafeDetail as Parameters<typeof encodeProtocolEnvelope>[0]
+          )
+      ]) {
+        try {
+          operation();
+          throw new Error(`Expected unsafe audit-event detail key to be rejected for ${name}`);
+        } catch (error) {
+          expect(error, name).toBeInstanceOf(Error);
+          expect((error as Error).message, name).toContain(message);
+          expect((error as Error).message, name).not.toContain("private-audit-detail-key");
+          expect((error as Error).message, name).not.toContain(rawKey);
+        }
+      }
+    }
+  });
+
   it("redacts sensitive audit-event detail fields when parsing protocol messages", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),

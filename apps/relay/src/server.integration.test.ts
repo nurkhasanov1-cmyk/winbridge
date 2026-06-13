@@ -1101,6 +1101,86 @@ describe("relay runtime integration", () => {
     }
   });
 
+  it("rejects registered audit-event messages with unsafe detail keys before forwarding", async () => {
+    const cases: Array<{
+      name: string;
+      detail: Record<string, unknown>;
+      rawKey: string;
+      privateMarker: string;
+    }> = [
+      {
+        name: "control-character detail key",
+        rawKey: "unsafe\nrelay-private-detail-key",
+        privateMarker: "relay-private-detail-key",
+        detail: {
+          "unsafe\nrelay-private-detail-key": "value"
+        }
+      },
+      {
+        name: "bidi-control nested detail key",
+        rawKey: "unsafe\u202erelay-private-detail-key",
+        privateMarker: "relay-private-detail-key",
+        detail: {
+          nested: {
+            "unsafe\u202erelay-private-detail-key": "value"
+          }
+        }
+      },
+      {
+        name: "zero-width array object detail key",
+        rawKey: "unsafe\ufeffrelay-private-detail-key",
+        privateMarker: "relay-private-detail-key",
+        detail: {
+          attempts: [
+            {
+              "unsafe\ufeffrelay-private-detail-key": "value"
+            }
+          ]
+        }
+      }
+    ];
+
+    for (const { detail, name, privateMarker, rawKey } of cases) {
+      const auditSink = new MemoryAuditSink();
+      const runtime = await startRuntime({ auditSink });
+      const { host, viewer } = await joinPairedSession(runtime);
+
+      host.send(
+        JSON.stringify({
+          ...createMessageBase("session-demo"),
+          type: "audit-event",
+          eventId: "audit-demo",
+          actorPeerId: "host-1",
+          action: "agent-shell.detail-key-test",
+          outcome: "failed",
+          detail
+        })
+      );
+
+      expect(await waitForJsonMessage(host, (message) => message.type === "relay-error"), name).toEqual({
+        type: "relay-error",
+        reason: "Invalid relay message"
+      });
+      await expectNoProtocolMessage(viewer, (message) => message.type === "audit-event");
+
+      const rejected = await waitForAuditRecord(
+        auditSink,
+        (record) => record.action === "relay.message.rejected" && record.reason === "Invalid relay message"
+      );
+      expect(rejected, name).toMatchObject({
+        action: "relay.message.rejected",
+        outcome: "failed",
+        sessionId: "session-demo",
+        reason: "Invalid relay message",
+        detail: {
+          registered: true
+        }
+      });
+      expect(JSON.stringify(rejected), name).not.toContain(privateMarker);
+      expect(JSON.stringify(rejected), name).not.toContain(rawKey);
+    }
+  });
+
   it("rejects hello messages with malformed capability metadata before forwarding", async () => {
     const cases: Array<{
       name: string;

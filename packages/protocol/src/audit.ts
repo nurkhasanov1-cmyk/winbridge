@@ -60,7 +60,23 @@ const AuditTargetTypeSchema = z
 
 export const AuditDetailSchema = createJsonObjectSchema(
   "Audit detail must be JSON-compatible"
-);
+).superRefine((detail, context) => {
+  const unsafeKind = findUnsafeAuditDetailKeyKind(detail);
+  if (unsafeKind === "ascii-control") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Audit detail keys must not contain ASCII control characters"
+    });
+    return;
+  }
+
+  if (unsafeKind === "format-control") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Audit detail keys must not contain Unicode bidi or zero-width formatting controls"
+    });
+  }
+});
 
 export const AuditRecordSchema = z.object({
   eventId: ProtocolIdentifierSchema.min(8),
@@ -249,6 +265,43 @@ function hasUnsafeFormatCharacter(value: string): boolean {
   }
 
   return false;
+}
+
+function findUnsafeAuditDetailKeyKind(value: JsonValue): "ascii-control" | "format-control" | undefined {
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      const item = value[index];
+      if (item === undefined) {
+        return undefined;
+      }
+
+      const unsafeKind = findUnsafeAuditDetailKeyKind(item);
+      if (unsafeKind) {
+        return unsafeKind;
+      }
+    }
+
+    return undefined;
+  }
+
+  if (value && typeof value === "object") {
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (hasAsciiControlCharacter(key)) {
+        return "ascii-control";
+      }
+
+      if (hasUnsafeFormatCharacter(key)) {
+        return "format-control";
+      }
+
+      const unsafeKind = findUnsafeAuditDetailKeyKind(nestedValue);
+      if (unsafeKind) {
+        return unsafeKind;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function isSensitiveAuditDetailKey(key: string): boolean {

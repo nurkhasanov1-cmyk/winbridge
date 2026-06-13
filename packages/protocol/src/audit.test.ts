@@ -144,6 +144,69 @@ describe("audit records", () => {
     });
   });
 
+  it("rejects unsafe audit detail keys without exposing raw key text", () => {
+    const cases: Array<{
+      name: string;
+      detail: Record<string, unknown>;
+      rawKey: string;
+      message: string;
+    }> = [
+      {
+        name: "control-character key",
+        rawKey: "unsafe\nprivate-detail-key",
+        detail: {
+          "unsafe\nprivate-detail-key": "value"
+        },
+        message: "Audit detail keys must not contain ASCII control characters"
+      },
+      {
+        name: "bidi-control nested key",
+        rawKey: "unsafe\u202eprivate-detail-key",
+        detail: {
+          nested: {
+            "unsafe\u202eprivate-detail-key": "value"
+          }
+        },
+        message: "Audit detail keys must not contain Unicode bidi or zero-width formatting controls"
+      },
+      {
+        name: "zero-width array object key",
+        rawKey: "unsafe\ufeffprivate-detail-key",
+        detail: {
+          attempts: [
+            {
+              "unsafe\ufeffprivate-detail-key": "value"
+            }
+          ]
+        },
+        message: "Audit detail keys must not contain Unicode bidi or zero-width formatting controls"
+      }
+    ];
+
+    for (const { detail, message, name, rawKey } of cases) {
+      for (const operation of [
+        () =>
+          createAuditRecord({
+            actor: { type: "relay", id: "relay-dev" },
+            action: "relay.peer.join.accepted",
+            outcome: "accepted",
+            detail: detail as AuditDetail
+          }),
+        () => redactAuditDetail(detail)
+      ]) {
+        try {
+          operation();
+          throw new Error(`Expected unsafe audit detail key to be rejected for ${name}`);
+        } catch (error) {
+          expect(error, name).toBeInstanceOf(Error);
+          expect((error as Error).message, name).toContain(message);
+          expect((error as Error).message, name).not.toContain("private-detail-key");
+          expect((error as Error).message, name).not.toContain(rawKey);
+        }
+      }
+    }
+  });
+
   it("rejects records without required actor metadata", () => {
     expect(() =>
       createAuditRecord({
