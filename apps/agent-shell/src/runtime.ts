@@ -66,6 +66,7 @@ export type AgentShellRuntimeOptions = {
   hostTerminateAfterMs?: number;
   hostTerminateReason?: string;
   hostDisconnectAfterMs?: number;
+  hostSignalProbeAck?: boolean;
   viewerSignalProbeAfterMs?: number;
   auditSink?: AuditSink;
   logger?: {
@@ -181,6 +182,8 @@ const RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE =
   "Runtime workflow timer delays must be integers from 0 through 2147483647";
 const RUNTIME_VIEWER_SIGNAL_PROBE_ERROR_MESSAGE =
   "Runtime viewer signal probe requires a viewer runtime with requested screen:view permission";
+const RUNTIME_HOST_SIGNAL_PROBE_ACK_ERROR_MESSAGE =
+  "Runtime host signal probe acknowledgement is only valid for host runtimes";
 const AGENT_SHELL_RUNTIME_ERROR_MESSAGE = "Agent shell runtime error";
 const AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell local peer is disconnected";
 const AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell peer is disconnected";
@@ -219,6 +222,7 @@ const REDACTED_EVENT_VALUE = "[REDACTED]";
 const VALID_HOST_DECISIONS = new Set(["none", "approve", "deny"]);
 const SIGNAL_REQUIRED_PERMISSION: Permission = "screen:view";
 const VIEWER_SIGNAL_PROBE_MARKER = "viewer-signal-probe-v1";
+const HOST_SIGNAL_PROBE_ACK_MARKER = "host-signal-probe-ack-v1";
 const TERMINAL_AUTHORIZATION_STATUSES = new Set<SessionAuthorizationStatus>([
   "denied",
   "revoked",
@@ -244,6 +248,7 @@ type AgentShellSessionState = {
   viewerAuthorization?: RuntimeAuthorizationSnapshot;
   viewerSignalProbeAuthorizationId?: string;
   viewerSignalProbeGeneration: number;
+  hostSignalProbeAckAuthorizationId?: string;
   hostIndicator?: AgentShellHostIndicatorEvent;
 };
 
@@ -582,6 +587,7 @@ function resetConnectionScopedSessionState(sessionState: AgentShellSessionState)
   sessionState.viewerAuthorization = undefined;
   sessionState.viewerSignalProbeAuthorizationId = undefined;
   sessionState.viewerSignalProbeGeneration = 0;
+  sessionState.hostSignalProbeAckAuthorizationId = undefined;
   sessionState.hostIndicator = undefined;
 }
 
@@ -673,6 +679,7 @@ async function handleMessage(
 
   try {
     updateViewerAuthorizationState(options, sessionState, envelope);
+    sendHostSignalProbeAck(socket, options, sessionState, envelope);
 
     if (isViewerAuthorizationLifecycleMessage(envelope) && !hasActiveSignalAuthorization(sessionState.viewerAuthorization)) {
       invalidateViewerSignalProbe(sessionState);
@@ -1354,6 +1361,47 @@ function sendViewerSignalProbe(
   });
 }
 
+function sendHostSignalProbeAck(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  message: ProtocolEnvelope
+): void {
+  if (!options.hostSignalProbeAck || options.role !== "host" || message.type !== "signal") {
+    return;
+  }
+
+  const authorizationId = signalPayloadAuthorizationId(message);
+  if (!authorizationId || !isViewerSignalProbePayload(message.payload)) {
+    return;
+  }
+
+  const snapshot = sessionState.hostAuthorization;
+  if (!hasActiveSignalAuthorization(snapshot) || message.fromPeerId !== snapshot.remotePeerId) {
+    return;
+  }
+
+  if (sessionState.hostSignalProbeAckAuthorizationId === authorizationId) {
+    return;
+  }
+
+  sendPublicRuntimeMessage(socket, options, sessionState, {
+    ...createMessageBase(options.sessionId),
+    type: "signal",
+    fromPeerId: options.peerId,
+    toPeerId: snapshot.remotePeerId,
+    payload: {
+      authorizationId,
+      probeAck: HOST_SIGNAL_PROBE_ACK_MARKER
+    }
+  });
+  sessionState.hostSignalProbeAckAuthorizationId = authorizationId;
+}
+
+function isViewerSignalProbePayload(payload: Record<string, unknown>): boolean {
+  return payload.probe === VIEWER_SIGNAL_PROBE_MARKER;
+}
+
 function signalPayloadAuthorizationId(
   message: Extract<ProtocolEnvelope, { type: "signal" }>
 ): string | undefined {
@@ -1832,6 +1880,7 @@ function validateRuntimeOptions(options: AgentShellRuntimeOptions): URL {
     options.viewerSignalProbeAfterMs
   ]);
   assertRuntimeViewerSignalProbe(options);
+  assertRuntimeHostSignalProbeAck(options);
   assertRuntimeWorkflowReasons([
     options.decisionReason,
     options.hostRevokeReason,
@@ -2055,6 +2104,16 @@ function assertRuntimeViewerSignalProbe(options: AgentShellRuntimeOptions): void
 
   if (options.role !== "viewer" || !options.requestedPermissions?.includes(SIGNAL_REQUIRED_PERMISSION)) {
     throw new Error(RUNTIME_VIEWER_SIGNAL_PROBE_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeHostSignalProbeAck(options: AgentShellRuntimeOptions): void {
+  if (options.hostSignalProbeAck === undefined) {
+    return;
+  }
+
+  if (typeof options.hostSignalProbeAck !== "boolean" || options.role !== "host") {
+    throw new Error(RUNTIME_HOST_SIGNAL_PROBE_ACK_ERROR_MESSAGE);
   }
 }
 

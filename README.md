@@ -160,6 +160,15 @@ npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:vi
 
 The viewer signal probe is viewer-only and requires an explicit `screen:view` request. It sends one static `signal` payload only after the viewer observes active visible `screen:view` authorization, and it uses the same runtime signal gates as tests. Pause, revoke, termination, expiration, local disconnect, remote disconnect, invisible approval, or missing `screen:view` prevents the probe before a local sent event or socket write. The probe does not include SDP, ICE candidates, user-provided JSON, screen contents, input, clipboard data, file-transfer data, diagnostics data, tokens, pairing codes, or display names.
 
+For a static development round-trip check, opt the host into acknowledging trusted viewer probes:
+
+```powershell
+npm run dev:agent -- host --session demo --pairing 123-456 --host-decision approve --visible-session true --host-signal-probe-ack true
+npm run dev:agent -- viewer --session demo --pairing 123-456 --request screen:view --viewer-signal-probe-after-ms 1000
+```
+
+The host acknowledgement is host-only and defaults to off. It sends at most one static acknowledgement `signal` per authorization id, only after the inbound viewer probe has already passed runtime signal authorization gates. The acknowledgement uses the same public runtime send path as manual signals, so pause, revoke, termination, expiration, local disconnect, remote disconnect, missing recipient, routing mismatch, invisible approval, or missing `screen:view` fail closed before a local sent event or socket write. The acknowledgement payload contains only the current `authorizationId` and a static marker; it does not include SDP, ICE candidates, user-provided JSON, screen contents, input, clipboard data, file-transfer data, diagnostics data, tokens, pairing codes, credentials, private reasons, or display names.
+
 Use the development host control prompt to invoke immediate local controls from the host terminal:
 
 ```powershell

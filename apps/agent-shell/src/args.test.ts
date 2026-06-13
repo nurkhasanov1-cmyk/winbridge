@@ -25,6 +25,7 @@ describe("agent shell arguments", () => {
       hostDecision: "none",
       hostConsentPrompt: false,
       hostControlPrompt: false,
+      hostSignalProbeAck: false,
       visibleToHost: false
     });
   });
@@ -55,6 +56,11 @@ describe("agent shell arguments", () => {
   it("parses interactive host control prompt mode for host runtimes", () => {
     expect(parseArgs(["host", "--host-control-prompt", "true"], {}, 42).hostControlPrompt).toBe(true);
     expect(parseArgs(["host", "--host-control-prompt", "false"], {}, 42).hostControlPrompt).toBe(false);
+  });
+
+  it("parses host signal probe acknowledgement mode for host runtimes", () => {
+    expect(parseArgs(["host", "--host-signal-probe-ack", "true"], {}, 42).hostSignalProbeAck).toBe(true);
+    expect(parseArgs(["host", "--host-signal-probe-ack", "false"], {}, 42).hostSignalProbeAck).toBe(false);
   });
 
   it("parses viewer signal probe mode for screen-view viewer requests", () => {
@@ -135,6 +141,14 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects malformed host signal probe acknowledgement values", () => {
+    for (const value of ["yes", "1", "TRUE", "False", ""]) {
+      expect(() => parseArgs(["host", "--host-signal-probe-ack", value], {}, 42)).toThrow(
+        AgentShellUsageError
+      );
+    }
+  });
+
   it("rejects malformed viewer signal probe delay values", () => {
     for (const delayMs of ["-1", "1.5", "Infinity", "01", "2147483648"]) {
       expect(() =>
@@ -173,6 +187,15 @@ describe("agent shell arguments", () => {
         42
       )
     ).toThrow(AgentShellUsageError);
+  });
+
+  it("rejects host signal probe acknowledgement for viewer runtimes", () => {
+    expect(() => parseArgs(["viewer", "--host-signal-probe-ack", "true"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
+    expect(() => parseArgs(["viewer", "--host-signal-probe-ack", "false"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
   });
 
   it("rejects viewer signal probe for host runtimes or requests without screen view", () => {
