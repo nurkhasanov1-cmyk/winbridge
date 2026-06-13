@@ -1348,6 +1348,26 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("session-authorization-decision");
   });
 
+  it("rejects approved session authorization decisions with stale expiration", () => {
+    const createdAt = "2026-06-13T09:00:00.000Z";
+
+    for (const expiresAt of ["2026-06-13T08:59:59.999Z", createdAt]) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          createdAt,
+          type: "session-authorization-decision",
+          authorizationId: "authz-demo",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: ["screen:view"],
+          expiresAt
+        })
+      ).toThrow("expiresAt after createdAt");
+    }
+  });
+
   it("rejects approved session authorization decisions without granted permissions", () => {
     expect(() =>
       parseProtocolEnvelope({
@@ -1468,6 +1488,26 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("session-authorization-state");
   });
 
+  it("rejects grant-bearing session authorization state updates with stale expiration", () => {
+    const createdAt = "2026-06-13T09:00:00.000Z";
+
+    for (const status of ["approved", "active", "paused"] as const) {
+      expect(() =>
+        parseProtocolEnvelope({
+          ...createMessageBase("session-demo"),
+          createdAt,
+          type: "session-authorization-state",
+          authorizationId: "authz-demo",
+          actorPeerId: "host-1",
+          status,
+          visibleToHost: status !== "approved",
+          permissions: ["screen:view"],
+          expiresAt: createdAt
+        })
+      ).toThrow("expiresAt after createdAt");
+    }
+  });
+
   it("accepts terminal session authorization state updates with empty permissions", () => {
     const parsed = parseProtocolEnvelope({
       ...createMessageBase("session-demo"),
@@ -1562,6 +1602,27 @@ describe("protocol envelopes", () => {
         permissions: []
       });
     }
+  });
+
+  it("accepts expired session authorization state updates with past expiration", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      createdAt: "2026-06-13T09:00:00.000Z",
+      type: "session-authorization-state",
+      authorizationId: "authz-demo",
+      actorPeerId: "host-1",
+      status: "expired",
+      visibleToHost: true,
+      permissions: [],
+      expiresAt: "2026-06-13T08:59:59.999Z",
+      reason: "Authorization expired"
+    });
+
+    expect(parsed).toMatchObject({
+      type: "session-authorization-state",
+      status: "expired",
+      permissions: []
+    });
   });
 
   it("rejects grant-bearing state updates without permissions", () => {

@@ -186,6 +186,15 @@ export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.exten
     });
   }
 
+  if (message.decision === "approved" && message.expiresAt) {
+    requireExpirationAfterCreatedAt(
+      message.createdAt,
+      message.expiresAt,
+      context,
+      "approved authorization decisions"
+    );
+  }
+
   if (message.decision === "approved" && message.grantedPermissions.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -256,6 +265,15 @@ export const SessionAuthorizationStateMessageSchema = BaseMessageSchema.extend({
       message: `${message.status} session authorization state requires permissions`,
       path: ["permissions"]
     });
+  }
+
+  if (grantBearingState) {
+    requireExpirationAfterCreatedAt(
+      message.createdAt,
+      message.expiresAt,
+      context,
+      `${message.status} authorization state`
+    );
   }
 
   if (!grantBearingState && message.permissions.length > 0) {
@@ -472,6 +490,23 @@ function rejectDuplicateCapabilities(capabilities: unknown[], context: z.Refinem
     code: z.ZodIssueCode.custom,
     message: "capabilities must be unique",
     path: ["capabilities"]
+  });
+}
+
+function requireExpirationAfterCreatedAt(
+  createdAt: string,
+  expiresAt: string,
+  context: z.RefinementCtx,
+  label: string
+): void {
+  if (Date.parse(expiresAt) > Date.parse(createdAt)) {
+    return;
+  }
+
+  context.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: `${label} require expiresAt after createdAt`,
+    path: ["expiresAt"]
   });
 }
 
