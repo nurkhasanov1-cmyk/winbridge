@@ -3910,6 +3910,8 @@ describe("agent shell consent workflow", () => {
       viewerEvents,
       (message) => message.type === "relay-ready" && message.peerId === "viewer-1"
     );
+    await waitForMessage(hostEvents, (message) => message.type === "hello" && message.peerId === "viewer-1");
+    await waitForMessage(viewerEvents, (message) => message.type === "hello" && message.peerId === "host-1");
 
     const blockedMessages: Array<{
       name: string;
@@ -4500,6 +4502,220 @@ describe("agent shell consent workflow", () => {
     } finally {
       await viewer?.stop();
       await mismatchedDecisionServer.stop();
+    }
+  });
+
+  it("ignores viewer audit events before observing host authority", async () => {
+    const unobservedAuditServer = await startViewerAuthorizationLifecycleServer(() => [
+      {
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit_unobserved_host",
+        actorPeerId: "host-1",
+        action: "agent-shell.private-unobserved-audit",
+        outcome: "accepted",
+        detail: {
+          token: "raw-token",
+          safeMarker: "private unobserved audit detail marker",
+          screenContent: "raw-screen-content"
+        }
+      }
+    ]);
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        unobservedAuditServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      const rawEvent = await waitForRawEvent(viewerEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(rawEvent.byteLength).toBeGreaterThan(0);
+      expect(
+        viewerEvents.some(
+          (event) => event.direction === "received" && event.message.type === "audit-event"
+        )
+      ).toBe(false);
+
+      await expectViewerSignalSendBlocked(
+        viewer,
+        viewerEvents,
+        "blocked-after-unobserved-audit-payload",
+        viewerLogs
+      );
+      const serializedRawEvents = JSON.stringify(viewerEvents.filter((event) => event.direction === "raw"));
+      const logOutput = viewerLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("audit-event");
+      expect(logOutput).not.toContain("host-1");
+      expect(logOutput).not.toContain("audit_unobserved_host");
+      expect(logOutput).not.toContain("agent-shell.private-unobserved-audit");
+      expect(logOutput).not.toContain("private unobserved audit detail marker");
+      expect(logOutput).not.toContain("raw-token");
+      expect(logOutput).not.toContain("raw-screen-content");
+      expect(serializedRawEvents).not.toContain("audit-event");
+      expect(serializedRawEvents).not.toContain("host-1");
+      expect(serializedRawEvents).not.toContain("audit_unobserved_host");
+      expect(serializedRawEvents).not.toContain("agent-shell.private-unobserved-audit");
+      expect(serializedRawEvents).not.toContain("private unobserved audit detail marker");
+      expect(serializedRawEvents).not.toContain("raw-token");
+      expect(serializedRawEvents).not.toContain("raw-screen-content");
+    } finally {
+      await viewer?.stop();
+      await unobservedAuditServer.stop();
+    }
+  });
+
+  it("ignores viewer audit events from a mismatched observed host", async () => {
+    const mismatchedAuditServer = await startObservedHostViewerAuthorizationLifecycleServer(() => [
+      {
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit_mismatched_host",
+        actorPeerId: "host-2",
+        action: "agent-shell.private-mismatched-audit",
+        outcome: "accepted",
+        detail: {
+          token: "raw-token",
+          safeMarker: "private mismatched audit detail marker",
+          screenContent: "raw-screen-content"
+        }
+      }
+    ]);
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        mismatchedAuditServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      await waitForMessage(viewerEvents, (message) => message.type === "hello" && message.peerId === "host-1");
+      const rawEvent = await waitForRawEvent(viewerEvents);
+      await delay(100);
+
+      expect(rawEvent).toMatchObject({
+        direction: "raw",
+        text: "[REDACTED]",
+        byteLength: expect.any(Number)
+      });
+      expect(rawEvent.byteLength).toBeGreaterThan(0);
+      expect(
+        viewerEvents.some(
+          (event) => event.direction === "received" && event.message.type === "audit-event"
+        )
+      ).toBe(false);
+
+      await expectViewerSignalSendBlocked(
+        viewer,
+        viewerEvents,
+        "blocked-after-mismatched-audit-payload",
+        viewerLogs
+      );
+      const serializedRawEvents = JSON.stringify(viewerEvents.filter((event) => event.direction === "raw"));
+      const logOutput = viewerLogs.join("\n");
+      expect(logOutput).toContain("ignored unsafe inbound protocol message bytes=");
+      expect(logOutput).not.toContain("host-2");
+      expect(logOutput).not.toContain("audit_mismatched_host");
+      expect(logOutput).not.toContain("agent-shell.private-mismatched-audit");
+      expect(logOutput).not.toContain("private mismatched audit detail marker");
+      expect(logOutput).not.toContain("raw-token");
+      expect(logOutput).not.toContain("raw-screen-content");
+      expect(serializedRawEvents).not.toContain("host-2");
+      expect(serializedRawEvents).not.toContain("audit_mismatched_host");
+      expect(serializedRawEvents).not.toContain("agent-shell.private-mismatched-audit");
+      expect(serializedRawEvents).not.toContain("private mismatched audit detail marker");
+      expect(serializedRawEvents).not.toContain("raw-token");
+      expect(serializedRawEvents).not.toContain("raw-screen-content");
+    } finally {
+      await viewer?.stop();
+      await mismatchedAuditServer.stop();
+    }
+  });
+
+  it("accepts redacted viewer audit events from the observed host without authorizing signals", async () => {
+    const observedAuditServer = await startObservedHostViewerAuthorizationLifecycleServer(() => [
+      {
+        ...createMessageBase("session-demo"),
+        type: "audit-event",
+        eventId: "audit_observed_host",
+        actorPeerId: "host-1",
+        action: "agent-shell.authorization.active",
+        outcome: "accepted",
+        detail: {
+          token: "raw-token",
+          safeMarker: "observed audit detail marker",
+          nested: {
+            screenContent: "raw-screen-content"
+          }
+        }
+      }
+    ]);
+    const viewerEvents: AgentShellEvent[] = [];
+    const viewerLogs: string[] = [];
+    let viewer: AgentShellRuntime | undefined;
+
+    try {
+      viewer = await startViewer(
+        observedAuditServer.url,
+        ["screen:view"],
+        viewerEvents,
+        captureLogger(viewerLogs)
+      );
+
+      await waitForMessage(viewerEvents, (message) => message.type === "hello" && message.peerId === "host-1");
+      const auditEvent = await waitForMessage(
+        viewerEvents,
+        (message) => message.type === "audit-event" && message.eventId === "audit_observed_host"
+      );
+      await delay(100);
+
+      expect(auditEvent).toMatchObject({
+        type: "audit-event",
+        eventId: "audit_observed_host",
+        actorPeerId: "host-1",
+        action: "agent-shell.authorization.active",
+        outcome: "accepted",
+        detail: {
+          token: "[REDACTED]",
+          safeMarker: "observed audit detail marker",
+          nested: {
+            screenContent: "[REDACTED]"
+          }
+        }
+      });
+      expect(viewerEvents.some((event) => event.direction === "raw")).toBe(false);
+
+      await expectViewerSignalSendBlocked(
+        viewer,
+        viewerEvents,
+        "blocked-after-observed-audit-payload",
+        viewerLogs
+      );
+      const serializedEvents = JSON.stringify(viewerEvents);
+      expect(serializedEvents).not.toContain("raw-token");
+      expect(serializedEvents).not.toContain("raw-screen-content");
+      expect(viewerLogs.join("\n")).toContain("received audit-event");
+      expect(viewerLogs.join("\n")).not.toContain("raw-token");
+      expect(viewerLogs.join("\n")).not.toContain("raw-screen-content");
+    } finally {
+      await viewer?.stop();
+      await observedAuditServer.stop();
     }
   });
 

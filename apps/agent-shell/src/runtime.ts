@@ -643,6 +643,8 @@ function isUntrustedViewerAuthorizationLifecycleMessage(
         envelope.authorizationId,
         envelope.actorPeerId
       );
+    case "audit-event":
+      return !isObservedHostAuthority(sessionState, envelope.actorPeerId);
     default:
       return false;
   }
