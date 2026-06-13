@@ -233,10 +233,13 @@ describe("FileAuditSink", () => {
       " logs/audit.jsonl",
       "logs/audit.jsonl ",
       "logs/audit\npath.jsonl",
+      "logs/audit\u202epath.jsonl",
+      "logs/audit\u200bpath.jsonl",
+      "logs/audit\ufeffpath.jsonl",
       "x".repeat(1025)
     ]) {
       expect(() => new FileAuditSink(path)).toThrow(
-        "Audit log path must be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters"
+        "Audit log path must be non-blank, already trimmed, 1024 UTF-8 bytes or less, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls"
       );
     }
   });
@@ -245,6 +248,9 @@ describe("FileAuditSink", () => {
     for (const path of [
       " logs/audit-private-marker.jsonl ",
       "logs/audit-private-marker\n.jsonl",
+      "logs/audit-private-marker\u202e.jsonl",
+      "logs/audit-private-marker\u200b.jsonl",
+      "logs/audit-private-marker\ufeff.jsonl",
       `logs/${"audit-private-marker".repeat(58)}.jsonl`
     ]) {
       try {

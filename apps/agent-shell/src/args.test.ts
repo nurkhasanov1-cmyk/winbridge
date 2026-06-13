@@ -284,6 +284,9 @@ describe("agent shell arguments", () => {
       " logs/agent-audit.jsonl",
       "logs/agent-audit.jsonl ",
       "logs/agent-audit\npath.jsonl",
+      "logs/agent-audit\u202epath.jsonl",
+      "logs/agent-audit\u200bpath.jsonl",
+      "logs/agent-audit\ufeffpath.jsonl",
       "x".repeat(1025)
     ]) {
       expect(() => parseArgs(["host", "--audit-log", auditLogPath], {}, 42)).toThrow(
@@ -299,6 +302,9 @@ describe("agent shell arguments", () => {
     for (const auditLogPath of [
       " logs/agent-audit-private-marker.jsonl ",
       "logs/agent-audit-private-marker\n.jsonl",
+      "logs/agent-audit-private-marker\u202e.jsonl",
+      "logs/agent-audit-private-marker\u200b.jsonl",
+      "logs/agent-audit-private-marker\ufeff.jsonl",
       `logs/${"agent-audit-private-marker".repeat(43)}.jsonl`
     ]) {
       try {

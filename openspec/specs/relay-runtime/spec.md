@@ -38,6 +38,14 @@ The relay CLI SHALL report unexpected startup and shutdown failures without expo
 - **THEN** stderr output MUST include a generic relay error diagnostic with summary metadata such as raw message byte length
 - **AND** stderr output MUST NOT include the raw exception message or stack trace
 
+### Requirement: Relay audit path runtime validation
+The relay runtime SHALL reject configured development audit log paths that are empty, whitespace-only, untrimmed, exceed 1024 UTF-8 bytes, contain ASCII control characters, contain Unicode bidirectional formatting controls, or contain zero-width formatting controls before selecting a file audit sink, opening a listener, or accepting peer connections.
+
+#### Scenario: Relay audit path contains format controls
+- **WHEN** the relay is configured with a `WINBRIDGE_RELAY_AUDIT_LOG_PATH` value containing a Unicode bidirectional or zero-width formatting control
+- **THEN** relay startup fails before selecting a file audit sink, opening a listener, or accepting peer connections
+- **AND** startup diagnostics MUST NOT include the raw configured path value
+
 ### Requirement: End-to-end broker verification
 The relay runtime SHALL be verifiable through WebSocket integration tests for accepted joins, message forwarding, rejected joins, invalid tokens, and rate-limit closure.
 
@@ -392,6 +400,7 @@ The relay runtime SHALL include secret-safe recipient routing metadata in accept
 #### Scenario: Forwarded message audit remains payload-safe
 - **WHEN** the relay audits an accepted forwarded message
 - **THEN** the audit record detail MUST NOT include raw protocol payloads, display names, private reasons, SDP, ICE candidates, payload markers, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or full secrets
+
 ### Requirement: Forwarded message identifier audit metadata
 The relay runtime SHALL include the parsed protocol `messageId` in accepted `relay.message.forwarded` audit detail after protocol validation and before audit persistence, and MUST NOT include raw protocol payload contents or user display metadata in that accepted forward audit record.
 

@@ -125,6 +125,9 @@ describe("relay audit", () => {
       " logs/relay-audit.jsonl",
       "logs/relay-audit.jsonl ",
       "logs/relay-audit\npath.jsonl",
+      "logs/relay-audit\u202epath.jsonl",
+      "logs/relay-audit\u200bpath.jsonl",
+      "logs/relay-audit\ufeffpath.jsonl",
       "x".repeat(1025)
     ]) {
       expect(() =>
@@ -132,7 +135,7 @@ describe("relay audit", () => {
           WINBRIDGE_RELAY_AUDIT_LOG_PATH: auditLogPath
         })
       ).toThrow(
-        "WINBRIDGE_RELAY_AUDIT_LOG_PATH must be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters"
+        "WINBRIDGE_RELAY_AUDIT_LOG_PATH must be non-blank, already trimmed, 1024 UTF-8 bytes or less, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls"
       );
     }
   });
@@ -141,6 +144,9 @@ describe("relay audit", () => {
     for (const auditLogPath of [
       " logs/relay-audit-private-marker.jsonl ",
       "logs/relay-audit-private-marker\n.jsonl",
+      "logs/relay-audit-private-marker\u202e.jsonl",
+      "logs/relay-audit-private-marker\u200b.jsonl",
+      "logs/relay-audit-private-marker\ufeff.jsonl",
       `logs/${"relay-audit-private-marker".repeat(43)}.jsonl`
     ]) {
       try {
