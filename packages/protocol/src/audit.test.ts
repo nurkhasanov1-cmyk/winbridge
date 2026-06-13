@@ -459,7 +459,8 @@ describe("audit records", () => {
       "authHeaderValue raw-auth-header",
       "agent-shell.cookieValue raw-cookie-value",
       "agent-shell.authHeaderValue raw-auth-header",
-      "agent-shell.tokenValue raw-token-secret"
+      "agent-shell.tokenValue raw-token-secret",
+      "agent-shell.passphrase raw-passphrase-secret"
     ]) {
       try {
         createAuditRecord({
@@ -546,6 +547,8 @@ describe("audit records", () => {
       "access_key=raw-access-key-underscore",
       "sshKey: raw-ssh-key",
       "ssh key raw-ssh-key-with-space",
+      "passphrase: raw-passphrase",
+      "pass phrase raw-passphrase-with-space",
       "private close token raw-close-token",
       "token raw-token-secret",
       "clipboard: raw-clipboard",
@@ -594,10 +597,12 @@ describe("audit records", () => {
       token: "secret-token",
       pairingCode: "123-456",
       credential: "secret-credential",
+      passphrase: "secret-passphrase",
       nested: {
         keystroke: "abc",
         screenshot: "raw-image",
-        screenData: "raw-screen"
+        screenData: "raw-screen",
+        raw_passphrase: "raw-nested-passphrase"
       },
       clipboardText: "raw-clipboard",
       clipboard: "raw-clipboard-exact",
@@ -619,10 +624,12 @@ describe("audit records", () => {
       token: "[REDACTED]",
       pairingCode: "[REDACTED]",
       credential: "[REDACTED]",
+      passphrase: "[REDACTED]",
       nested: {
         keystroke: "[REDACTED]",
         screenshot: "[REDACTED]",
-        screenData: "[REDACTED]"
+        screenData: "[REDACTED]",
+        raw_passphrase: "[REDACTED]"
       },
       clipboardText: "[REDACTED]",
       clipboard: "[REDACTED]",
@@ -822,6 +829,9 @@ describe("audit records", () => {
             authorizationId: "ssh-key-raw-audit-authz-secret"
           },
           {
+            authorizationId: "passphrase-raw-audit-authz-secret"
+          },
+          {
             authorizationId: "authz-array"
           }
         ]
@@ -842,6 +852,9 @@ describe("audit records", () => {
           authorizationId: "[REDACTED]"
         },
         {
+          authorizationId: "[REDACTED]"
+        },
+        {
           authorizationId: "authz-array"
         }
       ]
@@ -849,6 +862,7 @@ describe("audit records", () => {
     expect(JSON.stringify(record)).not.toContain("token-raw-audit-authz-secret");
     expect(JSON.stringify(record)).not.toContain("cookie.raw.audit.authz.secret");
     expect(JSON.stringify(record)).not.toContain("ssh-key-raw-audit-authz-secret");
+    expect(JSON.stringify(record)).not.toContain("passphrase-raw-audit-authz-secret");
     expect(JSON.stringify(record)).not.toContain("token-raw-object-authz-secret");
   });
 

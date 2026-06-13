@@ -117,6 +117,7 @@ const sensitiveKeySubstrings = [
   "token",
   "credential",
   "password",
+  "passphrase",
   "secret",
   "pairingcode",
   "keylog",
@@ -178,7 +179,7 @@ const safeAuditReasons = new Set([
   "Relay token rate limit exceeded"
 ]);
 const sensitiveReasonMarkerPattern =
-  /\b(?:token|credential|password|secret|pairing[\s_-]*code|api[\s_-]*key|access[\s_-]*key|authorization|proxy[\s_-]*authorization|authorization[\s_-]*header|auth[\s_-]*header|set[\s_-]*cookie|session[\s_-]*cookie|cookie|private[\s_-]*key|ssh[\s_-]*key|keystroke|screenshot|screen[\s_-]*data|screen[\s_-]*content)\b\s*(?::|=|\s+)\s*\S+/i;
+  /\b(?:token|credential|password|pass[\s_-]*phrase|secret|pairing[\s_-]*code|api[\s_-]*key|access[\s_-]*key|authorization|proxy[\s_-]*authorization|authorization[\s_-]*header|auth[\s_-]*header|set[\s_-]*cookie|session[\s_-]*cookie|cookie|private[\s_-]*key|ssh[\s_-]*key|keystroke|screenshot|screen[\s_-]*data|screen[\s_-]*content)\b\s*(?::|=|\s+)\s*\S+/i;
 const sensitiveRemoteContentReasonPattern =
   /(?:\b(?:clipboard(?:[\s_-]*(?:text|content|contents))?|file[\s_-]*(?:content|data|bytes|transfer)|diagnostic(?:s)?(?:[\s_-]*(?:content|dump))?)\b\s*(?::|=)\s*\S+)|(?:\b(?:clipboard[\s_-]*(?:text|content|contents)|file[\s_-]*(?:content|data|bytes)|diagnostic(?:s)?[\s_-]*(?:content|dump))\b\s+\S+)/i;
 const sensitiveReasonCredentialPattern = /\b(?:bearer|basic)\s+[a-z0-9._~+/=-]+/i;
@@ -189,6 +190,7 @@ const sensitiveProtocolIdentifierMarkers = [
   "token",
   "credential",
   "password",
+  "passphrase",
   "secret",
   "pairingcode",
   "apikey",

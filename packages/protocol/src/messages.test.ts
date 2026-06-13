@@ -2237,6 +2237,7 @@ describe("protocol envelopes", () => {
         token: "raw-token",
         credential: "raw-credential",
         password: "raw-password",
+        passphrase: "raw-passphrase",
         pairingCode: "123-456",
         keystroke: "typed secret",
         screenshot: "image bytes",
@@ -2257,6 +2258,7 @@ describe("protocol envelopes", () => {
         token: "[REDACTED]",
         credential: "[REDACTED]",
         password: "[REDACTED]",
+        passphrase: "[REDACTED]",
         pairingCode: "[REDACTED]",
         keystroke: "[REDACTED]",
         screenshot: "[REDACTED]",
@@ -2271,6 +2273,7 @@ describe("protocol envelopes", () => {
       }
     });
     expect(JSON.stringify(parsed)).not.toContain("raw-token");
+    expect(JSON.stringify(parsed)).not.toContain("raw-passphrase");
     expect(JSON.stringify(parsed)).not.toContain("123-456");
     expect(JSON.stringify(parsed)).not.toContain("clipboard data");
     expect(JSON.stringify(parsed)).not.toContain("file data");
@@ -2530,6 +2533,7 @@ describe("protocol envelopes", () => {
       detail: {
         apiKey: "api-key-secret",
         accessKey: "raw-access-key",
+        passPhrase: "raw-passphrase",
         authorization: "Bearer raw-token",
         rawAuthorizationHeader: "raw-authorization-header",
         cookie: "sid=raw-cookie",
@@ -2546,6 +2550,7 @@ describe("protocol envelopes", () => {
     expect(decoded.detail).toEqual({
       apiKey: "[REDACTED]",
       accessKey: "[REDACTED]",
+      passPhrase: "[REDACTED]",
       authorization: "[REDACTED]",
       rawAuthorizationHeader: "[REDACTED]",
       cookie: "[REDACTED]",
@@ -2558,6 +2563,7 @@ describe("protocol envelopes", () => {
     });
     expect(encoded).not.toContain("api-key-secret");
     expect(encoded).not.toContain("raw-access-key");
+    expect(encoded).not.toContain("raw-passphrase");
     expect(encoded).not.toContain("raw-token");
     expect(encoded).not.toContain("raw-authorization-header");
     expect(encoded).not.toContain("raw-cookie");

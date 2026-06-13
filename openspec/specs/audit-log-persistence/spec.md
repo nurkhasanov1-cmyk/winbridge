@@ -43,7 +43,7 @@ The file audit sink SHALL apply shared keylogging-related audit detail redaction
 The system SHALL redact top-level audit `reason` values that contain obvious sensitive material before returning, logging, or persisting audit records through shared audit creation and sinks, while preserving fixed bounded metadata-only reason strings.
 
 #### Scenario: Sensitive audit reason is redacted
-- **WHEN** an audit record is created with a top-level reason containing a token, credential, pairing code, API key, authorization header, auth header, cookie, private key, keystroke, screenshot, screen data, screen content, clipboard content, file-transfer content/data/bytes, diagnostics content/dump, or secret marker plus a secret-bearing value
+- **WHEN** an audit record is created with a top-level reason containing a token, credential, password, passphrase, pairing code, API key, authorization header, auth header, cookie, private key, keystroke, screenshot, screen data, screen content, clipboard content, file-transfer content/data/bytes, diagnostics content/dump, or secret marker plus a secret-bearing value
 - **THEN** the created audit record contains a redacted reason value and does not expose the raw sensitive reason text
 
 #### Scenario: Safe bounded audit reason is preserved
