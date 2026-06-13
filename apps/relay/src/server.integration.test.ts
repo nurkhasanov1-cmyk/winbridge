@@ -270,6 +270,127 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(forwarded)).not.toContain("raw-forwarded-signal-candidate");
   });
 
+  it("audits forwarded authorization lifecycle ids without sensitive lifecycle metadata", async () => {
+    const authorizationId = "authz-forwarded-lifecycle";
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const messages: Array<{
+      name: string;
+      privateMarker: string;
+      message: ProtocolEnvelope;
+    }> = [
+      {
+        name: "decision",
+        privateMarker: "decision-private-reason",
+        message: {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-decision",
+          authorizationId,
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          decision: "approved",
+          grantedPermissions: ["screen:view", "input:pointer"],
+          expiresAt,
+          reason: "decision-private-reason"
+        }
+      },
+      {
+        name: "state",
+        privateMarker: "state-private-reason",
+        message: {
+          ...createMessageBase("session-demo"),
+          type: "session-authorization-state",
+          authorizationId,
+          actorPeerId: "host-1",
+          status: "active",
+          visibleToHost: true,
+          permissions: ["screen:view", "input:pointer"],
+          expiresAt,
+          reason: "state-private-reason"
+        }
+      },
+      {
+        name: "revocation",
+        privateMarker: "revoke-private-reason",
+        message: {
+          ...createMessageBase("session-demo"),
+          type: "permission-revoked",
+          authorizationId,
+          actorPeerId: "host-1",
+          revokedPermission: "input:pointer",
+          reason: "revoke-private-reason"
+        }
+      },
+      {
+        name: "control",
+        privateMarker: "control-private-reason",
+        message: {
+          ...createMessageBase("session-demo"),
+          type: "session-control",
+          authorizationId,
+          actorPeerId: "host-1",
+          action: "revoke-permission",
+          permission: "input:pointer",
+          reason: "control-private-reason"
+        }
+      }
+    ];
+
+    for (const { name, privateMarker, message } of messages) {
+      const auditSink = new MemoryAuditSink();
+      const runtime = await startRuntime({ auditSink });
+      const { host, viewer } = await joinPairedSession(runtime);
+
+      host.send(encodeProtocolEnvelope(message));
+
+      expect(
+        await waitForProtocolMessage(
+          viewer,
+          (forwarded) => forwarded.type === message.type && forwarded.messageId === message.messageId
+        ),
+        name
+      ).toMatchObject({
+        type: message.type,
+        authorizationId
+      });
+
+      const forwarded = await waitForAuditRecord(
+        auditSink,
+        (record) =>
+          record.action === "relay.message.forwarded" &&
+          record.detail?.messageType === message.type &&
+          record.detail?.messageId === message.messageId
+      );
+      expect(forwarded, name).toMatchObject({
+        action: "relay.message.forwarded",
+        actor: {
+          id: "development-relay:host-1"
+        },
+        outcome: "accepted",
+        sessionId: "session-demo",
+        detail: {
+          messageType: message.type,
+          messageId: message.messageId,
+          authorizationId,
+          recipientPeerId: "viewer-1",
+          recipientRole: "viewer"
+        }
+      });
+      expect(forwarded.detail, name).toEqual({
+        messageType: message.type,
+        messageId: message.messageId,
+        authorizationId,
+        recipientPeerId: "viewer-1",
+        recipientRole: "viewer"
+      });
+      expect(JSON.stringify(forwarded), name).not.toContain(privateMarker);
+      expect(JSON.stringify(forwarded), name).not.toContain("screen:view");
+      expect(JSON.stringify(forwarded), name).not.toContain("input:pointer");
+      expect(JSON.stringify(forwarded), name).not.toContain("grantedPermissions");
+      expect(JSON.stringify(forwarded), name).not.toContain("revokedPermission");
+      expect(JSON.stringify(forwarded), name).not.toContain("reason");
+    }
+  });
+
   it("audits forwarded hello messages without display or capability metadata", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });

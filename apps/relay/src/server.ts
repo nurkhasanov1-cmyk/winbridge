@@ -610,14 +610,28 @@ function acceptedForwardAuditDetail(
     recipientRole: recipient.role
   };
 
-  if (envelope.type === "signal") {
-    const authorizationId = envelope.payload.authorizationId;
-    if (typeof authorizationId === "string") {
-      detail.authorizationId = authorizationId;
-    }
+  const authorizationId = forwardAuditAuthorizationId(envelope);
+  if (authorizationId) {
+    detail.authorizationId = authorizationId;
   }
 
   return detail;
+}
+
+function forwardAuditAuthorizationId(envelope: ProtocolEnvelope): string | undefined {
+  switch (envelope.type) {
+    case "session-authorization-decision":
+    case "session-authorization-state":
+    case "permission-revoked":
+    case "session-control":
+      return envelope.authorizationId;
+    case "signal": {
+      const authorizationId = envelope.payload.authorizationId;
+      return typeof authorizationId === "string" ? authorizationId : undefined;
+    }
+    default:
+      return undefined;
+  }
 }
 
 function assertEnvelopePeer(peerId: string, peer: RelayPeer): void {
