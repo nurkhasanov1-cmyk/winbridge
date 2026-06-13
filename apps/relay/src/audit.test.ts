@@ -23,6 +23,44 @@ describe("relay audit", () => {
     });
   });
 
+  it("redacts separator-form secret-bearing session and peer identifiers", () => {
+    const sink = new MemoryAuditSink();
+    const cases = [
+      {
+        sessionId: "token-raw-session-secret",
+        peerId: "cookie.raw-peer-secret"
+      },
+      {
+        sessionId: "credential_raw_session_secret",
+        peerId: "private:key:raw-peer-secret"
+      }
+    ];
+
+    for (const { sessionId, peerId } of cases) {
+      const record = writeRelayAudit(sink, {
+        action: "relay.peer.join.accepted",
+        outcome: "accepted",
+        sessionId,
+        peerId
+      });
+
+      expect(record.sessionId).toBeUndefined();
+      expect(record.actor.id).toBe("development-relay:peer:redacted");
+      expect(record.detail).toMatchObject({
+        relaySessionIdRedacted: true,
+        relaySessionIdLength: sessionId.length,
+        relayPeerIdRedacted: true,
+        relayPeerIdLength: peerId.length
+      });
+
+      const serialized = JSON.stringify(record);
+      expect(serialized).not.toContain(sessionId);
+      expect(serialized).not.toContain(peerId);
+      expect(serialized).not.toContain("raw-session-secret");
+      expect(serialized).not.toContain("raw-peer-secret");
+    }
+  });
+
   it("bounds relay actor ids for max-length peer ids", () => {
     const sink = new MemoryAuditSink();
     const peerId = "p".repeat(PROTOCOL_IDENTIFIER_MAX_LENGTH);

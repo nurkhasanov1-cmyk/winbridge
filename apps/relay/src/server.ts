@@ -19,7 +19,7 @@ import {
   createMessageBase,
   decodeProtocolEnvelope,
   encodeProtocolEnvelope,
-  hasSecretBearingAuditMetadata,
+  hasSecretBearingProtocolIdentifierMetadata,
   JoinSessionMessageSchema,
   stringifyJson,
   type AuditDetail,
@@ -999,7 +999,7 @@ function joinDenialAuditAttribution(envelope: ProtocolEnvelope): {
 function isRelayAuditIdentifierSafe(identifier: string, pairingCode?: string): boolean {
   return (
     (pairingCode === undefined || !identifier.includes(pairingCode)) &&
-    !hasSecretBearingAuditMetadata(identifier)
+    !hasSecretBearingProtocolIdentifierMetadata(identifier)
   );
 }
 

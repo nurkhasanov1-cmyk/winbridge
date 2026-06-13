@@ -6,7 +6,7 @@ import {
   type AuditSink
 } from "@winbridge/audit-log";
 import {
-  hasSecretBearingAuditMetadata,
+  hasSecretBearingProtocolIdentifierMetadata,
   PROTOCOL_IDENTIFIER_MAX_LENGTH,
   type AuditActor,
   type AuditDetail,
@@ -124,5 +124,5 @@ function relayAuditActor(peerId: string | undefined): {
 }
 
 function isSecretBearingRelayIdentifier(identifier: string): boolean {
-  return hasSecretBearingAuditMetadata(identifier);
+  return hasSecretBearingProtocolIdentifierMetadata(identifier);
 }

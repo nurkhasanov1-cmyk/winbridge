@@ -268,8 +268,8 @@ describe("relay runtime integration", () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({ auditSink });
     const host = await openSocket(runtime.url());
-    const secretBearingSessionId = "token:raw-session-secret";
-    const secretBearingPeerId = "token:raw-peer-secret";
+    const secretBearingSessionId = "token-raw-session-secret";
+    const secretBearingPeerId = "cookie.raw-peer-secret";
 
     host.send(joinMessage(secretBearingSessionId, secretBearingPeerId, "host", "123-456"));
 
@@ -308,8 +308,8 @@ describe("relay runtime integration", () => {
     const runtime = await startRuntime({ auditSink });
     const host = await openSocket(runtime.url());
     const deniedViewer = await openSocket(runtime.url());
-    const acceptedDeviceId = "token:raw-accepted-device-secret";
-    const deniedDeviceId = "cookie:raw-denied-device-secret";
+    const acceptedDeviceId = "access_key_raw_accepted_device_secret";
+    const deniedDeviceId = "ssh-key-raw-denied-device-secret";
     const acceptedIdentity: DeviceIdentity = {
       deviceId: acceptedDeviceId,
       displayName: "Accepted Device Private Display",
@@ -554,7 +554,7 @@ describe("relay runtime integration", () => {
     const runtime = await startRuntime({ auditSink });
     const host = await openSocket(runtime.url());
     const viewer = await openSocket(runtime.url());
-    const recipientPeerId = "cookie:raw-recipient-peer-secret";
+    const recipientPeerId = "auth_header_raw_recipient_peer_secret";
 
     host.send(joinMessage("session-demo", "host-1", "host", "123-456"));
     await waitForProtocolMessage(host, (message) => message.type === "relay-ready");
