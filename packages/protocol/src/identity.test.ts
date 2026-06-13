@@ -12,6 +12,14 @@ import {
   PairingTicketSchema
 } from "./identity.js";
 
+const secretBearingDisplayNames = [
+  "Authorization: Bearer raw-display-token",
+  "credential: raw-display-credential",
+  "pairing code: raw-display-pairing-code",
+  "diagnostics dump: raw-display-diagnostics",
+  "screen content: raw-display-screen"
+] as const;
+
 describe("device identity", () => {
   it("creates schema-valid local device metadata", () => {
     const identity = createDeviceIdentity({
@@ -84,6 +92,34 @@ describe("device identity", () => {
         })
       ).toThrow("Display name must not contain Unicode bidi or zero-width formatting controls");
     }
+  });
+
+  it("rejects secret-bearing local device display names without exposing raw text", () => {
+    for (const displayName of secretBearingDisplayNames) {
+      try {
+        createDeviceIdentity({
+          displayName,
+          platform: "windows",
+          deviceId: "dev_host_1"
+        });
+        throw new Error("Expected secret-bearing display name to be rejected");
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain("sensitive metadata");
+        expect((error as Error).message).not.toContain("raw-display");
+        expect((error as Error).message).not.toContain(displayName);
+      }
+    }
+  });
+
+  it("accepts safe non-secret local device display names", () => {
+    expect(
+      createDeviceIdentity({
+        displayName: "Host workstation",
+        platform: "windows",
+        deviceId: "dev_host_1"
+      }).displayName
+    ).toBe("Host workstation");
   });
 
   it("rejects device identity records with unknown fixed fields", () => {

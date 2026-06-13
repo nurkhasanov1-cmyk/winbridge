@@ -103,6 +103,13 @@ const SECRET_BEARING_REASON_CASES = [
   "diagnostics dump: raw-runtime-diagnostics",
   "screen content: raw-runtime-screen"
 ] as const;
+const SECRET_BEARING_DISPLAY_NAME_CASES = [
+  "Authorization: Bearer raw-display-token",
+  "credential: raw-display-credential",
+  "pairing code: raw-display-pairing-code",
+  "diagnostics dump: raw-display-diagnostics",
+  "screen content: raw-display-screen"
+] as const;
 
 afterEach(async () => {
   await Promise.all(agentRuntimes.splice(0).map((runtime) => runtime.stop()));
@@ -156,6 +163,11 @@ describe("agent shell consent workflow", () => {
       ["control-character display name", { displayName: "Host\nName" }, "Runtime display name"],
       ["bidi-control display name", { displayName: "Host\u202eName" }, "Runtime display name"],
       ["zero-width display name", { displayName: "Host\ufeffName" }, "Runtime display name"],
+      [
+        "secret-bearing display name",
+        { displayName: "Authorization: Bearer raw-display-token" },
+        "Runtime display name"
+      ],
       ["providerless host consent timeout", { hostConsentTimeoutMs: 5000 }, "Host consent timeout"],
       [
         "zero host consent timeout",
@@ -375,6 +387,23 @@ describe("agent shell consent workflow", () => {
         () => createAgentShellRuntime(createRuntimeOptions(overrides)),
         name
       ).toThrow(expectedMessage);
+    }
+  });
+
+  it("rejects secret-bearing runtime display names without exposing raw text", () => {
+    for (const displayName of SECRET_BEARING_DISPLAY_NAME_CASES) {
+      try {
+        createAgentShellRuntime(createRuntimeOptions({
+          displayName,
+          logger: silentLogger
+        }));
+        throw new Error("Expected secret-bearing runtime display name to be rejected");
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain("Runtime display name");
+        expect((error as Error).message).not.toContain("raw-display");
+        expect((error as Error).message).not.toContain(displayName);
+      }
     }
   });
 
@@ -987,6 +1016,55 @@ describe("agent shell consent workflow", () => {
     } finally {
       await host?.stop();
       await server.stop();
+    }
+  });
+
+  it("treats inbound hello messages with secret-bearing display names as raw unsafe input", async () => {
+    for (const displayName of SECRET_BEARING_DISPLAY_NAME_CASES) {
+      const server = await startViewerAuthorizationLifecycleServer(() => [
+        JSON.stringify({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId: "viewer-1",
+          role: "viewer",
+          displayName,
+          capabilities: ["session:visible"]
+        })
+      ]);
+      const hostEvents: AgentShellEvent[] = [];
+      const hostLogs: string[] = [];
+      let host: AgentShellRuntime | undefined;
+
+      try {
+        host = createAgentShellRuntime(createRuntimeOptions({
+          relayUrl: server.url,
+          logger: captureLogger(hostLogs),
+          onEvent: (event) => hostEvents.push(event)
+        }));
+        await host.start();
+
+        const rawEvent = await waitForRawEvent(hostEvents);
+        await delay(100);
+
+        expect(rawEvent).toMatchObject({
+          direction: "raw",
+          text: "[REDACTED]",
+          byteLength: expect.any(Number)
+        });
+        expect(hostEvents.some((event) => event.direction === "received")).toBe(false);
+        expect(hostEvents.some((event) => event.direction === "sent" && event.message.type === "hello")).toBe(false);
+
+        const serializedEvents = JSON.stringify(hostEvents);
+        const logOutput = hostLogs.join("\n");
+        expect(logOutput).toContain("received non-protocol message bytes=");
+        expect(logOutput).not.toContain("raw-display");
+        expect(logOutput).not.toContain(displayName);
+        expect(serializedEvents).not.toContain("raw-display");
+        expect(serializedEvents).not.toContain(displayName);
+      } finally {
+        await host?.stop();
+        await server.stop();
+      }
     }
   });
 
@@ -10635,6 +10713,48 @@ describe("agent shell consent workflow", () => {
     ).toHaveLength(viewerReceivedHelloCountBefore);
     expect(JSON.stringify(hostEvents)).not.toContain(privateMarker);
     expect(JSON.stringify(viewerEvents)).not.toContain(privateMarker);
+  });
+
+  it("blocks public hello sends with secret-bearing display names before socket write or sent events", async () => {
+    const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost();
+    await startViewer(relay.url(), [], viewerEvents);
+    await waitForMessage(hostEvents, (message) => message.type === "hello");
+    await waitForMessage(viewerEvents, (message) => message.type === "hello");
+
+    const sentCountBefore = hostEvents.filter((event) => event.direction === "sent").length;
+    const viewerReceivedHelloCountBefore = viewerEvents.filter(
+      (event) => event.direction === "received" && event.message.type === "hello"
+    ).length;
+
+    for (const displayName of SECRET_BEARING_DISPLAY_NAME_CASES) {
+      let blockedError: unknown;
+      try {
+        host.send({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId: "host-1",
+          role: "host",
+          displayName,
+          capabilities: ["agent-shell:test"]
+        } as ProtocolEnvelope);
+      } catch (error) {
+        blockedError = error;
+      }
+
+      await delay(50);
+
+      expect(blockedError).toBeInstanceOf(Error);
+      expect(String(blockedError)).not.toContain("raw-display");
+      expect(String(blockedError)).not.toContain(displayName);
+      expect(hostEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountBefore);
+      expect(
+        viewerEvents.filter((event) => event.direction === "received" && event.message.type === "hello")
+      ).toHaveLength(viewerReceivedHelloCountBefore);
+      expect(JSON.stringify(hostEvents)).not.toContain("raw-display");
+      expect(JSON.stringify(hostEvents)).not.toContain(displayName);
+      expect(JSON.stringify(viewerEvents)).not.toContain("raw-display");
+      expect(JSON.stringify(viewerEvents)).not.toContain(displayName);
+    }
   });
 
   it("blocks public sends with unknown fixed fields before socket write or sent events", async () => {

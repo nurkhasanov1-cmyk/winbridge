@@ -8,6 +8,7 @@ import {
   SessionGrantSchema,
   SessionIdSchema
 } from "./session.js";
+import { hasSecretBearingAuditMetadata } from "./audit.js";
 
 export const DeviceTrustLevelSchema = z.enum(["unknown", "local-dev", "verified"]);
 export type DeviceTrustLevel = z.infer<typeof DeviceTrustLevelSchema>;
@@ -25,6 +26,10 @@ export const DeviceDisplayNameSchema = z
   .refine(
     (displayName) => !hasUnsafeDisplayFormatCharacter(displayName),
     "Display name must not contain Unicode bidi or zero-width formatting controls"
+  )
+  .refine(
+    (displayName) => !hasSecretBearingAuditMetadata(displayName, { includeKeyAssignments: false }),
+    "Display name must not contain sensitive metadata"
   );
 export type DeviceDisplayName = z.infer<typeof DeviceDisplayNameSchema>;
 

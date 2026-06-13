@@ -17,6 +17,13 @@ describe("agent shell arguments", () => {
     "diagnostics dump: raw-cli-diagnostics",
     "screen content: raw-cli-screen"
   ] as const;
+  const secretBearingDisplayNames = [
+    "Authorization: Bearer raw-display-token",
+    "credential: raw-display-credential",
+    "pairing code: raw-display-pairing-code",
+    "diagnostics dump: raw-display-diagnostics",
+    "screen content: raw-display-screen"
+  ] as const;
 
   it("uses fail-closed defaults when optional consent flags are omitted", () => {
     const args = parseArgs(["viewer"], {}, 42);
@@ -453,6 +460,19 @@ describe("agent shell arguments", () => {
       expect(() => parseArgs(["viewer", "--name", displayName], {}, 42)).toThrow(
         AgentShellUsageError
       );
+    }
+  });
+
+  it("rejects secret-bearing display names without exposing raw text", () => {
+    for (const displayName of secretBearingDisplayNames) {
+      try {
+        parseArgs(["viewer", "--name", displayName], {}, 42);
+        throw new Error("Expected secret-bearing CLI display name to be rejected");
+      } catch (error) {
+        expect(error).toBeInstanceOf(AgentShellUsageError);
+        expect((error as Error).message).not.toContain("raw-display");
+        expect((error as Error).message).not.toContain(displayName);
+      }
     }
   });
 

@@ -28,6 +28,13 @@ const secretBearingReasons = [
   "diagnostics dump: raw-protocol-diagnostics",
   "screen content: raw-protocol-screen"
 ] as const;
+const secretBearingDisplayNames = [
+  "Authorization: Bearer raw-display-token",
+  "credential: raw-display-credential",
+  "pairing code: raw-display-pairing-code",
+  "diagnostics dump: raw-display-diagnostics",
+  "screen content: raw-display-screen"
+] as const;
 
 describe("protocol envelopes", () => {
   it("accepts a valid hello message", () => {
@@ -268,6 +275,34 @@ describe("protocol envelopes", () => {
           capabilities: ["session:visible"]
         })
       ).toThrow("Display name must not contain Unicode bidi or zero-width formatting controls");
+    }
+  });
+
+  it("rejects secret-bearing hello display names without exposing raw text", () => {
+    for (const displayName of secretBearingDisplayNames) {
+      const message = {
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName,
+        capabilities: ["session:visible"]
+      } as const;
+
+      for (const operation of [
+        () => parseProtocolEnvelope(message),
+        () => encodeProtocolEnvelope(message as Parameters<typeof encodeProtocolEnvelope>[0])
+      ]) {
+        try {
+          operation();
+          throw new Error("Expected secret-bearing hello display name to be rejected");
+        } catch (error) {
+          expect(error).toBeInstanceOf(Error);
+          expect((error as Error).message).toContain("sensitive metadata");
+          expect((error as Error).message).not.toContain("raw-display");
+          expect((error as Error).message).not.toContain(displayName);
+        }
+      }
     }
   });
 
@@ -1201,6 +1236,33 @@ describe("protocol envelopes", () => {
           requestedPermissions: ["screen:view"]
         })
       ).toThrow("Display name must not contain Unicode bidi or zero-width formatting controls");
+    }
+  });
+
+  it("rejects secret-bearing legacy host consent request display names without exposing raw text", () => {
+    for (const viewerDisplayName of secretBearingDisplayNames) {
+      const message = {
+        ...createMessageBase("session-demo"),
+        type: "host-consent-required",
+        viewerPeerId: "viewer-1",
+        viewerDisplayName,
+        requestedPermissions: ["screen:view"]
+      } as const;
+
+      for (const operation of [
+        () => parseProtocolEnvelope(message),
+        () => encodeProtocolEnvelope(message as Parameters<typeof encodeProtocolEnvelope>[0])
+      ]) {
+        try {
+          operation();
+          throw new Error("Expected secret-bearing legacy display name to be rejected");
+        } catch (error) {
+          expect(error).toBeInstanceOf(Error);
+          expect((error as Error).message).toContain("sensitive metadata");
+          expect((error as Error).message).not.toContain("raw-display");
+          expect((error as Error).message).not.toContain(viewerDisplayName);
+        }
+      }
     }
   });
 
