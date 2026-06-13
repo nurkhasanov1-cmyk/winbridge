@@ -19,6 +19,11 @@ project runtime.
 The CI workflow is verification-only: it requests read-only repository contents
 permission and bounds each Windows matrix job with a timeout.
 
+Release documentation gates:
+
+- [Release readiness checklist](release-checklist.md)
+- [Bootstrap privacy notice](privacy-notice.md)
+
 ## Initial GitHub Project Setup
 
 - Confirm Actions are enabled.
@@ -28,6 +33,8 @@ permission and bounds each Windows matrix job with a timeout.
   authentication, authorization, relay routing, tokens, logging/audit, installer
   behavior, startup behavior, privilege elevation, background services, or
   native Windows APIs.
+- Require release documentation review before tagging or publishing release
+  candidates, including the release checklist and privacy notice.
 - Enable private vulnerability reporting if available.
 - Create labels:
   - `area:protocol`

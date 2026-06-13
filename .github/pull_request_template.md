@@ -23,6 +23,12 @@
 - [ ] Security-relevant actions emit audit events.
 - [ ] No hidden session, stealth persistence, credential theft, keylogging, AV/EDR evasion, or Windows prompt bypass was added.
 
+## Release Documentation
+
+- [ ] Release readiness impact reviewed against `docs/release-checklist.md`.
+- [ ] Privacy/data-handling impact reviewed against `docs/privacy-notice.md`.
+- [ ] User-facing docs updated when consent, visibility, auth, audit, data handling, installer/startup/service behavior, or known non-capabilities changed.
+
 ## Verification
 
 - [ ] `npm run verify`

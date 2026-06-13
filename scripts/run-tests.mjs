@@ -12,9 +12,6 @@ if (testFiles.length === 0) {
 }
 
 for (const testFile of testFiles) {
-  const isAgentShellRuntime = testFile === "apps/agent-shell/src/runtime.integration.test.ts";
-  const isRelayRuntime = testFile === "apps/relay/src/server.integration.test.ts";
-  const pool = isAgentShellRuntime || isRelayRuntime ? "threads" : "forks";
   const result = spawnSync(
     process.execPath,
     [
@@ -22,7 +19,7 @@ for (const testFile of testFiles) {
       "run",
       testFile,
       "--pool",
-      pool,
+      "forks",
       "--maxWorkers",
       "1",
       "--minWorkers",

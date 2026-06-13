@@ -35,9 +35,14 @@ apps/
 packages/
   audit-log/       Shared development audit sinks.
   protocol/        Shared consent, session, and message schemas.
-docs/              Architecture, security, GitHub setup, roadmap, orchestration.
+docs/              Architecture, security, privacy, release, GitHub setup, roadmap, orchestration.
 openspec/          Spec-driven planning source of truth.
 ```
+
+Release and privacy gates:
+
+- [Release readiness checklist](docs/release-checklist.md)
+- [Bootstrap privacy notice](docs/privacy-notice.md)
 
 ## Quick Start
 
