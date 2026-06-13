@@ -150,6 +150,7 @@ export type AgentShellRuntime = {
   start(): Promise<void>;
   stop(): Promise<void>;
   getHostStatus(): AgentShellHostStatusSnapshot;
+  getViewerStatus(): AgentShellViewerStatusSnapshot;
   disconnect(): void;
   pause(): void;
   revokePermission(permission: Permission): void;
@@ -159,6 +160,14 @@ export type AgentShellRuntime = {
 };
 
 export type AgentShellHostStatusSnapshot = {
+  state: AgentShellHostIndicatorEvent["state"];
+  visibleToHost: boolean;
+  permissionCount: number;
+  authorizationId?: string;
+  authorizationStatus?: SessionAuthorizationStatus;
+};
+
+export type AgentShellViewerStatusSnapshot = {
   state: AgentShellHostIndicatorEvent["state"];
   visibleToHost: boolean;
   permissionCount: number;
@@ -207,6 +216,8 @@ const AGENT_SHELL_LOCAL_DISCONNECT_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell local disconnect control requires active visible host authorization";
 const AGENT_SHELL_HOST_STATUS_ROLE_ERROR_MESSAGE =
   "Agent shell host status is only valid for host runtimes";
+const AGENT_SHELL_VIEWER_STATUS_ROLE_ERROR_MESSAGE =
+  "Agent shell viewer status is only valid for viewer runtimes";
 const AGENT_SHELL_REVOKE_ROLE_ERROR_MESSAGE = "Agent shell revoke control is only valid for host runtimes";
 const AGENT_SHELL_REVOKE_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell revoke control requires active or paused visible host authorization";
@@ -394,6 +405,10 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
 
     getHostStatus() {
       return getHostStatusSnapshot(options, sessionState);
+    },
+
+    getViewerStatus() {
+      return getViewerStatusSnapshot(options, sessionState);
     },
 
     disconnect() {
@@ -1804,6 +1819,33 @@ function getHostStatusSnapshot(
   }
 
   const snapshot = sessionState.hostAuthorization;
+  if (!snapshot) {
+    return {
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0
+    };
+  }
+
+  const state = hostIndicatorStateForAuthorization(snapshot.status);
+  return {
+    state,
+    authorizationId: snapshot.authorizationId,
+    authorizationStatus: snapshot.status,
+    visibleToHost: state === "inactive" ? false : snapshot.visibleToHost,
+    permissionCount: state === "inactive" ? 0 : snapshot.permissions.length
+  };
+}
+
+function getViewerStatusSnapshot(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): AgentShellViewerStatusSnapshot {
+  if (options.role !== "viewer") {
+    throw new Error(AGENT_SHELL_VIEWER_STATUS_ROLE_ERROR_MESSAGE);
+  }
+
+  const snapshot = sessionState.viewerAuthorization;
   if (!snapshot) {
     return {
       state: "inactive",

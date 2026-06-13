@@ -179,6 +179,11 @@ function createRuntimeSpy(): AgentShellRuntime {
       visibleToHost: false,
       permissionCount: 0
     })),
+    getViewerStatus: vi.fn(() => ({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0
+    })),
     disconnect: vi.fn(),
     pause: vi.fn(),
     revokePermission: vi.fn(),

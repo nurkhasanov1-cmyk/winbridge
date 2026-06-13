@@ -2624,6 +2624,151 @@ describe("agent shell consent workflow", () => {
     expect(() => viewer.getHostStatus()).toThrow("Agent shell host status is only valid for host runtimes");
   });
 
+  it("reports read-only viewer status snapshots across authorization lifecycle", async () => {
+    const inactiveRuntime = createAgentShellRuntime(createRuntimeOptions({
+      role: "viewer",
+      peerId: "viewer-inactive",
+      displayName: "Viewer",
+      deviceId: "dev_viewer_inactive",
+      logger: silentLogger
+    }));
+    expect(inactiveRuntime.getViewerStatus()).toEqual({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0
+    });
+    await inactiveRuntime.stop();
+
+    const { relay, host, viewerEvents } = await startRelayAndHost({
+      hostDecision: "approve",
+      hostGrantPermissions: ["screen:view"],
+      visibleToHost: true
+    });
+    const viewer = await startViewer(relay.url(), ["screen:view", "input:pointer"], viewerEvents);
+
+    const activeState = await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "active"
+    );
+    if (activeState.type !== "session-authorization-state") {
+      throw new Error("Expected active authorization state");
+    }
+
+    const sentCountBeforeActiveStatus = viewerEvents.filter((event) => event.direction === "sent").length;
+    expect(viewer.getViewerStatus()).toEqual({
+      state: "active",
+      authorizationId: activeState.authorizationId,
+      authorizationStatus: "active",
+      visibleToHost: true,
+      permissionCount: 1
+    });
+    expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
+      sentCountBeforeActiveStatus
+    );
+
+    host.pause();
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "paused"
+    );
+    const sentCountBeforePausedStatus = viewerEvents.filter((event) => event.direction === "sent").length;
+    expect(viewer.getViewerStatus()).toEqual({
+      state: "paused",
+      authorizationId: activeState.authorizationId,
+      authorizationStatus: "paused",
+      visibleToHost: true,
+      permissionCount: 1
+    });
+    expect(viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
+      sentCountBeforePausedStatus
+    );
+
+    host.terminate();
+    await waitForMessage(
+      viewerEvents,
+      (message) => message.type === "session-authorization-state" && message.status === "terminated"
+    );
+    expect(viewer.getViewerStatus()).toEqual({
+      state: "inactive",
+      authorizationId: activeState.authorizationId,
+      authorizationStatus: "terminated",
+      visibleToHost: false,
+      permissionCount: 0
+    });
+  });
+
+  it("reports invisible or denied viewer status as inactive", async () => {
+    const invisible = await startRelayAndHost({
+      hostDecision: "approve",
+      visibleToHost: false
+    });
+    const invisibleViewer = await startViewer(
+      invisible.relay.url(),
+      ["screen:view"],
+      invisible.viewerEvents
+    );
+    const invisibleDecision = await waitForMessage(
+      invisible.viewerEvents,
+      (message) => message.type === "session-authorization-decision"
+    );
+    if (invisibleDecision.type !== "session-authorization-decision") {
+      throw new Error("Expected invisible authorization decision");
+    }
+    await delay(100);
+
+    const invisibleSentCountBeforeStatus = invisible.viewerEvents.filter(
+      (event) => event.direction === "sent"
+    ).length;
+    expect(invisibleViewer.getViewerStatus()).toEqual({
+      state: "inactive",
+      authorizationId: invisibleDecision.authorizationId,
+      authorizationStatus: "approved",
+      visibleToHost: false,
+      permissionCount: 0
+    });
+    expect(invisible.viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
+      invisibleSentCountBeforeStatus
+    );
+
+    const denied = await startRelayAndHost({
+      hostDecision: "deny",
+      visibleToHost: true
+    });
+    const deniedViewer = await startViewer(denied.relay.url(), ["screen:view"], denied.viewerEvents);
+    const deniedDecision = await waitForMessage(
+      denied.viewerEvents,
+      (message) =>
+        message.type === "session-authorization-decision" && message.decision === "denied"
+    );
+    if (deniedDecision.type !== "session-authorization-decision") {
+      throw new Error("Expected denied authorization decision");
+    }
+
+    const deniedSentCountBeforeStatus = denied.viewerEvents.filter(
+      (event) => event.direction === "sent"
+    ).length;
+    expect(deniedViewer.getViewerStatus()).toEqual({
+      state: "inactive",
+      authorizationId: deniedDecision.authorizationId,
+      authorizationStatus: "denied",
+      visibleToHost: false,
+      permissionCount: 0
+    });
+    expect(denied.viewerEvents.filter((event) => event.direction === "sent")).toHaveLength(
+      deniedSentCountBeforeStatus
+    );
+  });
+
+  it("rejects viewer status snapshots on host runtimes", () => {
+    const host = createAgentShellRuntime(createRuntimeOptions({
+      logger: silentLogger
+    }));
+
+    expect(() => host.getViewerStatus()).toThrow(
+      "Agent shell viewer status is only valid for viewer runtimes"
+    );
+  });
+
   it("withholds active state when host approves without visible session state", async () => {
     const { relay, host, hostEvents, viewerEvents } = await startRelayAndHost({
       hostDecision: "approve",
