@@ -269,6 +269,7 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
 
       socket.on("close", (code, reason) => {
         const reasonBytes = closeReasonByteLength(reason);
+        sessionState.localPeerDisconnected = true;
         deactivateHostIndicator(options, sessionState, "socket-closed");
         const event = { direction: "closed", code, reason: REDACTED_EVENT_VALUE, reasonBytes } as const;
         options.onEvent?.(event);

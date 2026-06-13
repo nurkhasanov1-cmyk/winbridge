@@ -7059,13 +7059,14 @@ describe("agent shell consent workflow", () => {
   it("deactivates the host indicator when the host socket closes", async () => {
     const socketCloseServer = await startHostSocketCloseAfterActiveServer();
     const hostEvents: AgentShellEvent[] = [];
+    const hostLogs: string[] = [];
     let host: AgentShellRuntime | undefined;
 
     try {
       host = createAgentShellRuntime(createRuntimeOptions({
         relayUrl: socketCloseServer.url,
         hostDecision: "approve",
-        logger: silentLogger,
+        logger: captureLogger(hostLogs),
         visibleToHost: true,
         onEvent: (event) => hostEvents.push(event)
       }));
@@ -7089,9 +7090,85 @@ describe("agent shell consent workflow", () => {
         permissionCount: 0,
         cause: "socket-closed"
       });
+
+      const sentCountAtClose = hostEvents.filter((event) => event.direction === "sent").length;
+      const privatePayloadMarker = "post-socket-close-private-signal-marker";
+      expect(() =>
+        host?.send({
+          ...createMessageBase("session-demo"),
+          type: "signal",
+          fromPeerId: "host-1",
+          toPeerId: "viewer-1",
+          payload: {
+            authorizationId: activeIndicator.authorizationId,
+            kind: "offer",
+            safeMarker: privatePayloadMarker
+          }
+        })
+      ).toThrow("Agent shell local peer is disconnected");
+      expect(hostEvents.filter((event) => event.direction === "sent")).toHaveLength(sentCountAtClose);
+      expect(JSON.stringify(hostEvents)).not.toContain(privatePayloadMarker);
+      expect(hostLogs.join("\n")).not.toContain(privatePayloadMarker);
     } finally {
       await host?.stop();
       await socketCloseServer.stop();
+    }
+  });
+
+  it("clears local socket close state across runtime restart", async () => {
+    const socketRestartServer = await startFirstSocketCloseThenReadyServer();
+    const hostEvents: AgentShellEvent[] = [];
+    let host: AgentShellRuntime | undefined;
+
+    try {
+      host = createAgentShellRuntime(createRuntimeOptions({
+        relayUrl: socketRestartServer.url,
+        hostDecision: "approve",
+        logger: silentLogger,
+        visibleToHost: true,
+        onEvent: (event) => hostEvents.push(event)
+      }));
+      await host.start();
+      await waitForClosedEvent(hostEvents);
+
+      expect(() =>
+        host?.send({
+          ...createMessageBase("session-demo"),
+          type: "hello",
+          peerId: "host-1",
+          role: "host",
+          displayName: "Host",
+          capabilities: ["agent-shell:test"]
+        })
+      ).toThrow("Agent shell local peer is disconnected");
+
+      await host.start();
+      await waitForReceivedMessageCount(
+        hostEvents,
+        (message) => message.type === "relay-ready" && message.peerId === "host-1",
+        2
+      );
+
+      const sentCountBeforePublicSend = hostEvents.filter((event) => event.direction === "sent").length;
+      host.send({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        displayName: "Host",
+        capabilities: ["agent-shell:restart"]
+      });
+      const sentAfterPublicSend = hostEvents.filter((event) => event.direction === "sent");
+      expect(sentAfterPublicSend).toHaveLength(sentCountBeforePublicSend + 1);
+      expect(sentAfterPublicSend.at(-1)?.message).toMatchObject({
+        type: "hello",
+        peerId: "host-1",
+        role: "host",
+        capabilities: ["agent-shell:restart"]
+      });
+    } finally {
+      await host?.stop();
+      await socketRestartServer.stop();
     }
   });
 
@@ -8952,6 +9029,80 @@ async function startHostSocketCloseAfterActiveServer(): Promise<{
   const address = wss.address() as AddressInfo | string | null;
   if (!address || typeof address === "string") {
     throw new Error("Host socket close test server did not expose a TCP port");
+  }
+
+  return {
+    url: `ws://127.0.0.1:${address.port}`,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        for (const client of wss.clients) {
+          client.close();
+        }
+
+        wss.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      })
+  };
+}
+
+async function startFirstSocketCloseThenReadyServer(): Promise<{
+  url: string;
+  stop(): Promise<void>;
+}> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  let connectionCount = 0;
+
+  wss.on("connection", (socket) => {
+    connectionCount += 1;
+    const connectionNumber = connectionCount;
+
+    socket.once("message", () => {
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "relay-ready",
+        peerId: "host-1",
+        roomSize: 2
+      }));
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "hello",
+        peerId: "viewer-1",
+        role: "viewer",
+        displayName: "Viewer",
+        capabilities: ["session:visible", "consent:required", "audit:stdout"]
+      }));
+
+      if (connectionNumber !== 1) {
+        return;
+      }
+
+      socket.send(encodeProtocolEnvelope({
+        ...createMessageBase("session-demo"),
+        type: "session-authorization-request",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: ["screen:view"],
+        reason: "Development test request"
+      }));
+    });
+
+    socket.on("message", (data) => {
+      const parsed = JSON.parse(data.toString()) as ProtocolEnvelope;
+      if (connectionNumber === 1 && parsed.type === "session-authorization-state" && parsed.status === "active") {
+        socket.close(1000, "Host socket close test");
+      }
+    });
+  });
+  await once(wss, "listening");
+
+  const address = wss.address() as AddressInfo | string | null;
+  if (!address || typeof address === "string") {
+    throw new Error("Socket restart test server did not expose a TCP port");
   }
 
   return {
