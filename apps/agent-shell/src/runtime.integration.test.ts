@@ -140,6 +140,8 @@ describe("agent shell consent workflow", () => {
       ["untrimmed token", { token: " relay-token " }, "Runtime token"],
       ["non-string token", { token: null as unknown as string }, "Runtime token"],
       ["control-character token", { token: "dev\ntoken" }, "Runtime token"],
+      ["bidi-control token", { token: "dev\u202etoken" }, "Runtime token"],
+      ["zero-width token", { token: "dev\u200btoken" }, "Runtime token"],
       ["oversized token", { token: "x".repeat(1025) }, "Runtime token"],
       [
         "invalid requested permission",
@@ -218,6 +220,24 @@ describe("agent shell consent workflow", () => {
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toContain("Runtime token");
       expect((error as Error).message).not.toContain("runtime-token-private-marker");
+      expect((error as Error).message).not.toContain(token);
+    }
+  });
+
+  it("rejects format-control runtime tokens without exposing raw token text", () => {
+    const token = "runtime-token\u202eprivate-marker";
+
+    try {
+      createAgentShellRuntime(createRuntimeOptions({
+        token,
+        logger: silentLogger
+      }));
+      throw new Error("Expected format-control runtime token to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("Runtime token");
+      expect((error as Error).message).not.toContain("runtime-token");
+      expect((error as Error).message).not.toContain("private-marker");
       expect((error as Error).message).not.toContain(token);
     }
   });

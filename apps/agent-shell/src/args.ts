@@ -391,7 +391,8 @@ function parseOptionalToken(raw: string | undefined): string | undefined {
     raw.trim().length === 0 ||
     raw !== raw.trim() ||
     Buffer.byteLength(raw, "utf8") > MAX_AGENT_SHELL_TOKEN_BYTES ||
-    hasAsciiControlCharacter(raw)
+    hasAsciiControlCharacter(raw) ||
+    hasUnsafeTokenFormatCharacter(raw)
   ) {
     throw new AgentShellUsageError();
   }
@@ -403,6 +404,28 @@ function hasAsciiControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code < 32 || code === 127) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasUnsafeTokenFormatCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+
+    if (
+      codePoint === 0x061c ||
+      codePoint === 0x200b ||
+      codePoint === 0x200c ||
+      codePoint === 0x200d ||
+      codePoint === 0x200e ||
+      codePoint === 0x200f ||
+      codePoint === 0x2060 ||
+      (codePoint !== undefined && codePoint >= 0x202a && codePoint <= 0x202e) ||
+      (codePoint !== undefined && codePoint >= 0x2066 && codePoint <= 0x2069)
+    ) {
       return true;
     }
   }

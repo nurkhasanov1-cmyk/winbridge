@@ -330,10 +330,33 @@ describe("agent shell arguments", () => {
   });
 
   it("rejects malformed relay tokens", () => {
-    for (const token of ["", "   ", " dev-token", "dev-token ", "dev\ntoken", "x".repeat(1025)]) {
+    for (const token of [
+      "",
+      "   ",
+      " dev-token",
+      "dev-token ",
+      "dev\ntoken",
+      "dev\u202etoken",
+      "dev\u200btoken",
+      "x".repeat(1025)
+    ]) {
       expect(() => parseArgs(["host", "--token", token], {}, 42)).toThrow(
         AgentShellUsageError
       );
+    }
+  });
+
+  it("rejects format-control relay tokens without exposing raw token text", () => {
+    const token = "agent-token\u202eprivate-marker";
+
+    try {
+      parseArgs(["host", "--token", token], {}, 42);
+      throw new Error("Expected format-control relay token to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AgentShellUsageError);
+      expect((error as Error).message).not.toContain("agent-token");
+      expect((error as Error).message).not.toContain("private-marker");
+      expect((error as Error).message).not.toContain(token);
     }
   });
 

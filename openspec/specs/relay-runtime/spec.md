@@ -139,14 +139,14 @@ The relay runtime SHALL allow tests to inject audit sinks and inspect security-r
 - **AND** the peer-facing close reason MUST be bounded and MUST NOT include the raw presented token, credentials, pairing codes, protocol payloads, private reasons, keystrokes, screenshots, or screen contents
 
 ### Requirement: Testable shared-token configuration
-The managed relay runtime SHALL reject malformed development shared-token configuration before creating a listener, opening a listening socket, or accepting peer connections. Malformed shared-token configuration MUST include non-string, blank, whitespace-only, untrimmed, control-character, or oversized values.
+The managed relay runtime SHALL reject malformed development shared-token configuration before creating a listener, opening a listening socket, or accepting peer connections. Malformed shared-token configuration MUST include non-string, blank, whitespace-only, untrimmed, ASCII-control-character, Unicode bidirectional-formatting-control, zero-width-formatting-control, or oversized values.
 
 #### Scenario: Runtime shared token configuration is malformed
-- **WHEN** tests create the relay runtime with non-string, blank, untrimmed, control-character, or oversized shared-token configuration
+- **WHEN** tests create the relay runtime with non-string, blank, untrimmed, ASCII-control-character, Unicode bidirectional-formatting-control, zero-width-formatting-control, or oversized shared-token configuration
 - **THEN** the runtime rejects configuration before accepting peer connections
 
 #### Scenario: Environment shared token configuration is malformed
-- **WHEN** the relay shared-token environment value is blank, untrimmed, control-character, or oversized
+- **WHEN** the relay shared-token environment value is blank, untrimmed, ASCII-control-character, Unicode bidirectional-formatting-control, zero-width-formatting-control, or oversized
 - **THEN** relay shared-token config parsing rejects the value before accepting peer connections
 
 #### Scenario: Shared-token config rejection does not leak secrets
@@ -392,7 +392,6 @@ The relay runtime SHALL include secret-safe recipient routing metadata in accept
 #### Scenario: Forwarded message audit remains payload-safe
 - **WHEN** the relay audits an accepted forwarded message
 - **THEN** the audit record detail MUST NOT include raw protocol payloads, display names, private reasons, SDP, ICE candidates, payload markers, tokens, pairing codes, credentials, keystrokes, screenshots, screen contents, clipboard contents, file-transfer contents/data/bytes, diagnostics content/dumps, or full secrets
-
 ### Requirement: Forwarded message identifier audit metadata
 The relay runtime SHALL include the parsed protocol `messageId` in accepted `relay.message.forwarded` audit detail after protocol validation and before audit persistence, and MUST NOT include raw protocol payload contents or user display metadata in that accepted forward audit record.
 

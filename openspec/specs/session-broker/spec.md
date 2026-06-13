@@ -34,7 +34,6 @@ The relay SHALL limit each development session room to one host peer and one vie
 #### Scenario: Same-role join denial is secret-safe
 - **WHEN** the relay rejects a same-role live peer join
 - **THEN** the peer-facing relay error and audit reason MUST use bounded metadata-only text and MUST NOT include raw pairing codes, tokens, credentials, protocol payloads, private reasons, keystrokes, screenshots, screen contents, or full secrets
-
 ### Requirement: Live peer identity exclusivity
 The relay SHALL reject a join attempt before registration when the target session already has a live registered peer with the same `peerId`, and SHALL NOT replace the existing peer connection or treat the duplicate join as an authorized reconnect.
 
@@ -170,7 +169,7 @@ The relay and agents SHALL enforce the `signal.payload` size bound using the sha
 - **THEN** the protocol schema accepts the payload if all other signal safety checks pass
 
 ### Requirement: Development relay token
-The relay SHALL support an optional shared token for local/private development and SHALL document that production deployments require stronger identity and authorization. When a shared token is configured, it MUST be non-blank, already trimmed, 1024 UTF-8 bytes or less, contain no ASCII control characters, and peers MUST present exactly one canonical lowercase `token` query parameter whose value exactly matches the configured shared token before joining a session room. Query parameter names whose ASCII case-insensitive form is `token` but whose exact spelling is not lowercase `token` MUST be treated as token-bearing and invalid. When a shared token is not configured, peers MUST NOT present any canonical or case-variant `token` query parameter and the relay MUST reject token-bearing connections before joining a session room.
+The relay SHALL support an optional shared token for local/private development and SHALL document that production deployments require stronger identity and authorization. When a shared token is configured, it MUST be non-blank, already trimmed, 1024 UTF-8 bytes or less, contain no ASCII control characters, contain no Unicode bidirectional formatting controls, contain no zero-width formatting controls, and peers MUST present exactly one canonical lowercase `token` query parameter whose value exactly matches the configured shared token before joining a session room. Query parameter names whose ASCII case-insensitive form is `token` but whose exact spelling is not lowercase `token` MUST be treated as token-bearing and invalid. When a shared token is not configured, peers MUST NOT present any canonical or case-variant `token` query parameter and the relay MUST reject token-bearing connections before joining a session room.
 
 #### Scenario: Shared token configured
 - **WHEN** the relay is started with a shared token
@@ -200,7 +199,7 @@ The relay SHALL support an optional shared token for local/private development a
 - **AND** the relay MUST NOT store, forward, echo, or audit the raw presented token value
 
 #### Scenario: Malformed shared token is rejected
-- **WHEN** the relay is configured with an empty, whitespace-only, non-string, untrimmed, control-character, or oversized shared token
+- **WHEN** the relay is configured with an empty, whitespace-only, non-string, untrimmed, control-character, Unicode bidirectional formatting control, zero-width formatting control, or oversized shared token
 - **THEN** the relay rejects the configuration before accepting peer connections
 
 ### Requirement: Host-created pairing gate

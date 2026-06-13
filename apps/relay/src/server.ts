@@ -44,7 +44,7 @@ const RELAY_MESSAGE_TOO_LARGE_REASON = `Relay message exceeds ${MAX_RELAY_MESSAG
 const GENERIC_RELAY_REJECTION_REASON = "Invalid relay message";
 const RELAY_TOKEN_NOT_CONFIGURED_CLOSE_REASON = "Relay token is not configured";
 const RELAY_SHARED_TOKEN_ERROR_MESSAGE =
-  "WINBRIDGE_RELAY_SHARED_TOKEN must be non-blank, already trimmed, 1024 UTF-8 bytes or less, and contain no ASCII control characters";
+  "WINBRIDGE_RELAY_SHARED_TOKEN must be non-blank, already trimmed, 1024 UTF-8 bytes or less, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls";
 const SAFE_RELAY_REJECTION_REASONS = new Set([
   GENERIC_RELAY_REJECTION_REASON,
   RELAY_MESSAGE_TOO_LARGE_REASON,
@@ -760,7 +760,8 @@ function normalizeRelaySharedToken(sharedToken: unknown): string | undefined {
     sharedToken.trim().length === 0 ||
     sharedToken !== sharedToken.trim() ||
     Buffer.byteLength(sharedToken, "utf8") > MAX_RELAY_SHARED_TOKEN_BYTES ||
-    hasAsciiControlCharacter(sharedToken)
+    hasAsciiControlCharacter(sharedToken) ||
+    hasUnsafeTokenFormatCharacter(sharedToken)
   ) {
     throw new Error(RELAY_SHARED_TOKEN_ERROR_MESSAGE);
   }
@@ -772,6 +773,28 @@ function hasAsciiControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code < 32 || code === 127) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasUnsafeTokenFormatCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+
+    if (
+      codePoint === 0x061c ||
+      codePoint === 0x200b ||
+      codePoint === 0x200c ||
+      codePoint === 0x200d ||
+      codePoint === 0x200e ||
+      codePoint === 0x200f ||
+      codePoint === 0x2060 ||
+      (codePoint !== undefined && codePoint >= 0x202a && codePoint <= 0x202e) ||
+      (codePoint !== undefined && codePoint >= 0x2066 && codePoint <= 0x2069)
+    ) {
       return true;
     }
   }
