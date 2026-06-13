@@ -1647,6 +1647,72 @@ describe("session authorization state machine", () => {
     }
   });
 
+  it("rejects file-transfer permission until an explicit file-transfer capability exists", () => {
+    const active = activateSessionAuthorization(
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: ["screen:view"],
+        now: baseTime
+      }),
+      { visibleToHost: true, now: baseTime }
+    );
+    const fileTransferPermissions = ["file-transfer"] as unknown as Parameters<
+      typeof createPendingSessionAuthorization
+    >[0]["requestedPermissions"];
+    const fileTransferGrant = ["file-transfer"] as unknown as Parameters<
+      typeof approveSessionAuthorization
+    >[1]["grantedPermissions"];
+    const fileTransferPermission = "file-transfer" as unknown as Parameters<
+      typeof revokeSessionPermission
+    >[1]["permission"];
+
+    expect(() =>
+      createPendingSessionAuthorization({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        requestedPermissions: fileTransferPermissions,
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      approveSessionAuthorization(pending(), {
+        grantedPermissions: fileTransferGrant,
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      SessionAuthorizationSchema.parse({
+        ...pending(),
+        permissions: fileTransferPermissions
+      })
+    ).toThrow();
+    expect(() =>
+      assertConsentBoundGrant({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        permissions: fileTransferPermissions,
+        requiresHostApproval: true,
+        visibleSessionRequired: true,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        auditId: "audit-demo"
+      })
+    ).toThrow();
+    expect(() =>
+      revokeSessionPermission(active, {
+        permission: fileTransferPermission,
+        now: baseTime
+      })
+    ).toThrow();
+    expect(() =>
+      assertSessionActionAuthorized({
+        authorization: active,
+        permission: fileTransferPermission,
+        now: baseTime
+      })
+    ).toThrow();
+  });
+
   it("rejects diagnostics permissions until an explicit diagnostics capability exists", () => {
     const active = activateSessionAuthorization(
       approveSessionAuthorization(pending(), {

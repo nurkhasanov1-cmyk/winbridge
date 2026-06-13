@@ -208,6 +208,11 @@ describe("agent shell consent workflow", () => {
         "Runtime requested permissions"
       ],
       [
+        "file-transfer requested permission",
+        { requestedPermissions: ["file-transfer"] },
+        "Runtime requested permissions"
+      ],
+      [
         "duplicate requested permission",
         { requestedPermissions: ["screen:view", "screen:view"] },
         "Runtime requested permissions"
@@ -248,6 +253,11 @@ describe("agent shell consent workflow", () => {
         "Runtime host grant scope"
       ],
       [
+        "file-transfer host grant scope",
+        { hostDecision: "approve", hostGrantPermissions: ["file-transfer"] },
+        "Runtime host grant scope"
+      ],
+      [
         "viewer host grant scope",
         {
           role: "viewer",
@@ -282,6 +292,11 @@ describe("agent shell consent workflow", () => {
       [
         "clipboard write revoke permission",
         { hostRevokePermission: "clipboard:write" },
+        "Runtime revoke permission"
+      ],
+      [
+        "file-transfer revoke permission",
+        { hostRevokePermission: "file-transfer" },
         "Runtime revoke permission"
       ],
       [

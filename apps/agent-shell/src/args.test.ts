@@ -387,6 +387,9 @@ describe("agent shell arguments", () => {
     expect(() => parseArgs(["viewer", "--request", "clipboard:write"], {}, 42)).toThrow(
       AgentShellUsageError
     );
+    expect(() => parseArgs(["viewer", "--request", "file-transfer"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
     expect(() => parseArgs(["viewer", "--pairing", "secret"], {}, 42)).toThrow(
       AgentShellUsageError
     );
@@ -427,6 +430,7 @@ describe("agent shell arguments", () => {
       ["host", "--host-decision", "approve", "--grant", "input:keylogger"],
       ["host", "--host-decision", "approve", "--grant", "clipboard:read"],
       ["host", "--host-decision", "approve", "--grant", "clipboard:write"],
+      ["host", "--host-decision", "approve", "--grant", "file-transfer"],
       ["host", "--host-decision", "approve", "--grant", "screen:view,screen:view"],
       ["host", "--host-decision", "approve", "--grant", " screen:view"]
     ]) {
@@ -456,6 +460,28 @@ describe("agent shell arguments", () => {
         )
       ).toThrow(AgentShellUsageError);
     }
+  });
+
+  it("rejects file-transfer permission revocation options", () => {
+    expect(() =>
+      parseArgs(
+        [
+          "host",
+          "--request",
+          "screen:view",
+          "--host-decision",
+          "approve",
+          "--grant",
+          "screen:view",
+          "--visible-session",
+          "true",
+          "--revoke-permission",
+          "file-transfer"
+        ],
+        {},
+        42
+      )
+    ).toThrow(AgentShellUsageError);
   });
 
   it("rejects malformed protocol identifier values", () => {

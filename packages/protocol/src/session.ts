@@ -30,7 +30,8 @@ export type Permission = z.infer<typeof BasePermissionSchema>;
 
 const UNAVAILABLE_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "clipboard:read",
-  "clipboard:write"
+  "clipboard:write",
+  "file-transfer"
 ]);
 
 export const PermissionSchema = BasePermissionSchema.refine(

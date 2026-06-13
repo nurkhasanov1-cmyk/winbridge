@@ -139,6 +139,7 @@ Optional `--name` display values must be non-blank, already trimmed, at most 120
 Optional `--request` values must use exact comma-separated permission tokens with no spaces around entries, for example `screen:view,input:pointer`.
 Optional host `--grant` values use the same exact permission-token format and can only narrow an approved host grant to a non-empty subset of the current viewer request.
 Clipboard permissions `clipboard:read` and `clipboard:write` are intentionally rejected until a future OpenSpec change and security review define a consent-first clipboard capability.
+File transfer permission `file-transfer` is intentionally rejected until a future OpenSpec change and security review define a consent-first file-transfer capability.
 Optional workflow reason values such as `--revoke-reason`, `--pause-reason`, `--resume-reason`, `--terminate-reason`, and `--disconnect-reason` must be non-blank, already trimmed, at most 240 characters, contain no ASCII control characters, contain no Unicode bidi or zero-width formatting controls, and contain no secret-bearing metadata such as raw tokens, credentials, pairing codes, authorization headers, cookies, private keys, screen contents, clipboard contents, file-transfer contents, or diagnostics dumps. `--disconnect-reason` is host-only and is additionally capped to 123 UTF-8 bytes so it fits WebSocket close reason metadata.
 
 Exercise the development consent workflow:

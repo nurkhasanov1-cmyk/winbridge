@@ -38,6 +38,7 @@ describe("interactive host control prompt", () => {
       "Pause",
       "revoke",
       "revoke ",
+      "revoke file-transfer",
       "revoke input:keylogger",
       "revoke screen:view raw-token",
       "disconnect raw-token",
