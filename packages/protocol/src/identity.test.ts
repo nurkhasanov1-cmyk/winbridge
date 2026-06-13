@@ -9,7 +9,8 @@ import {
   DeviceIdentitySchema,
   hashPairingCode,
   PairedDeviceSchema,
-  PairingTicketSchema
+  PairingTicketSchema,
+  SELF_PAIRING_DEVICE_REJECTION_REASON
 } from "./identity.js";
 
 const secretBearingDisplayNames = [
@@ -410,6 +411,29 @@ describe("pairing tickets", () => {
     ).toThrow("before pairing ticket expiration");
   });
 
+  it("rejects paired-device records that reuse the host device id", () => {
+    const ticket = createPairingTicket({
+      sessionId: "session-demo",
+      hostDeviceId: "dev_host_1",
+      pairingCode: "123-456",
+      ttlMs: 1000,
+      now: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    try {
+      createPairedDevice({
+        ticket,
+        viewerDeviceId: "dev_host_1",
+        pairedAt: new Date("2026-06-11T00:00:00.500Z")
+      });
+      throw new Error("Expected self-pairing device record to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain(SELF_PAIRING_DEVICE_REJECTION_REASON);
+      expect((error as Error).message).not.toContain("dev_host_1");
+    }
+  });
+
   it("creates a pair relationship without granting remote action permission", () => {
     const ticket = createPairingTicket({
       sessionId: "session-demo",
@@ -425,6 +449,7 @@ describe("pairing tickets", () => {
       pairedAt: new Date("2026-06-11T00:00:00.500Z")
     });
 
+    expect(pair.hostDeviceId).toBe("dev_host_1");
     expect(pair.viewerDeviceId).toBe("dev_viewer_1");
     expect(() =>
       assertRemoteActionAuthorized({

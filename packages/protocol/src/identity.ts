@@ -67,6 +67,8 @@ const DEFAULT_PAIRING_TICKET_TTL_MS = 5 * 60_000;
 const DEFAULT_PAIRING_TICKET_MAX_USES = 1;
 const MAX_PAIRING_TICKET_TTL_MS = 2_147_483_647;
 const MAX_PAIRING_TICKET_MAX_USES = 10;
+export const SELF_PAIRING_DEVICE_REJECTION_REASON =
+  "Paired device viewer must differ from host device";
 
 export function createDeviceIdentity(input: {
   displayName: string;
@@ -174,10 +176,15 @@ export function createPairedDevice(input: {
   pairedAt?: Date;
 }): PairedDevice {
   const ticket = PairingTicketSchema.parse(input.ticket);
+  const viewerDeviceId = ProtocolIdentifierSchema.min(8).parse(input.viewerDeviceId);
   const pairedAt = input.pairedAt ?? new Date();
   const pairedAtTime = pairedAt.getTime();
   const createdAtTime = Date.parse(ticket.createdAt);
   const expiresAtTime = Date.parse(ticket.expiresAt);
+
+  if (viewerDeviceId === ticket.hostDeviceId) {
+    throw new Error(SELF_PAIRING_DEVICE_REJECTION_REASON);
+  }
 
   if (pairedAtTime < createdAtTime) {
     throw new Error("Paired device timestamp must not be before pairing ticket creation");
@@ -191,7 +198,7 @@ export function createPairedDevice(input: {
     pairingId: ticket.pairingId,
     sessionId: ticket.sessionId,
     hostDeviceId: ticket.hostDeviceId,
-    viewerDeviceId: input.viewerDeviceId,
+    viewerDeviceId,
     pairedAt: pairedAt.toISOString()
   });
 }

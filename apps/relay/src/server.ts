@@ -21,6 +21,7 @@ import {
   encodeProtocolEnvelope,
   hasSecretBearingProtocolIdentifierMetadata,
   JoinSessionMessageSchema,
+  SELF_PAIRING_DEVICE_REJECTION_REASON,
   stringifyJson,
   type AuditDetail,
   type DeviceIdentity,
@@ -57,6 +58,7 @@ const SAFE_RELAY_REJECTION_REASONS = new Set([
   "Pairing code mismatch",
   "Pairing ticket is expired",
   "Pairing ticket has no remaining uses",
+  SELF_PAIRING_DEVICE_REJECTION_REASON,
   DUPLICATE_RELAY_PEER_JOIN_REASON,
   SAME_ROLE_RELAY_PEER_JOIN_REASON,
   "Registered peers cannot send join-session messages",
@@ -103,6 +105,12 @@ type RelayJoinAuditDeviceIdentity = Pick<
   deviceIdLength?: number;
 };
 type RelayDeniedJoinAuditDeviceIdentity = RelayJoinAuditDeviceIdentity;
+type RelayAuditDeviceIdentityOptions = {
+  redactDeviceId?: boolean;
+};
+type JoinDenialAuditAttributionOptions = {
+  redactAttemptedDeviceId?: boolean;
+};
 type RelayRuntimeStartState = "idle" | "starting" | "started";
 
 export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRuntime {
@@ -219,7 +227,12 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
             joinDeviceIdentity = registeredJoin.deviceIdentity;
           } catch (error) {
             const reason = safeRelayRejectionReason(error);
-            const attribution = joinDenialAuditAttribution(envelope);
+            const attribution = joinDenialAuditAttribution(
+              envelope,
+              reason === SELF_PAIRING_DEVICE_REJECTION_REASON
+                ? { redactAttemptedDeviceId: true }
+                : undefined
+            );
             writeRelayAudit(auditSink, {
               action: "relay.peer.join.denied",
               outcome: "denied",
@@ -641,7 +654,8 @@ function relayJoinAuditDeviceIdentity(
 
 function relayAuditDeviceIdentity(
   deviceIdentity: DeviceIdentity,
-  pairingCode: string
+  pairingCode: string,
+  options: RelayAuditDeviceIdentityOptions = {}
 ): RelayJoinAuditDeviceIdentity {
   const auditIdentity: RelayJoinAuditDeviceIdentity = {
     createdAt: deviceIdentity.createdAt,
@@ -649,7 +663,10 @@ function relayAuditDeviceIdentity(
     trustLevel: deviceIdentity.trustLevel
   };
 
-  if (isRelayAuditIdentifierSafe(deviceIdentity.deviceId, pairingCode)) {
+  if (
+    !options.redactDeviceId &&
+    isRelayAuditIdentifierSafe(deviceIdentity.deviceId, pairingCode)
+  ) {
     auditIdentity.deviceId = deviceIdentity.deviceId;
   } else {
     auditIdentity.deviceIdRedacted = true;
@@ -983,7 +1000,10 @@ function developmentDeviceIdForPeer(peerId: string): string {
   return padded.length <= 128 ? padded : padded.slice(0, 128);
 }
 
-function joinDenialAuditAttribution(envelope: ProtocolEnvelope): {
+function joinDenialAuditAttribution(
+  envelope: ProtocolEnvelope,
+  options: JoinDenialAuditAttributionOptions = {}
+): {
   sessionId?: string;
   peerId?: string;
   detail: AuditDetail;
@@ -997,7 +1017,8 @@ function joinDenialAuditAttribution(envelope: ProtocolEnvelope): {
   const peerIdSafe = isRelayAuditIdentifierSafe(envelope.peerId, envelope.pairingCode);
   const attemptedDeviceIdentity = relayDeniedJoinAuditDeviceIdentity(
     envelope.deviceIdentity,
-    envelope.pairingCode
+    envelope.pairingCode,
+    options.redactAttemptedDeviceId ? { redactDeviceId: true } : undefined
   );
 
   if (!sessionIdSafe) {
@@ -1030,13 +1051,14 @@ function isRelayAuditIdentifierSafe(identifier: string, pairingCode?: string): b
 
 function relayDeniedJoinAuditDeviceIdentity(
   deviceIdentity: DeviceIdentity | undefined,
-  pairingCode: string
+  pairingCode: string,
+  options: RelayAuditDeviceIdentityOptions = {}
 ): RelayDeniedJoinAuditDeviceIdentity | undefined {
   if (!deviceIdentity) {
     return undefined;
   }
 
-  return relayAuditDeviceIdentity(deviceIdentity, pairingCode);
+  return relayAuditDeviceIdentity(deviceIdentity, pairingCode, options);
 }
 
 function pairingDeniedAuditDetail(reason: string) {
@@ -1045,6 +1067,7 @@ function pairingDeniedAuditDetail(reason: string) {
     credentialMismatch: reason === "Pairing code mismatch",
     ticketExpired: reason === "Pairing ticket is expired",
     ticketConsumed: reason === "Pairing ticket has no remaining uses",
+    selfPairing: reason === SELF_PAIRING_DEVICE_REJECTION_REASON,
     duplicatePeer: reason === DUPLICATE_RELAY_PEER_JOIN_REASON,
     roleConflict: reason === SAME_ROLE_RELAY_PEER_JOIN_REASON
   };

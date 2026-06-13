@@ -125,7 +125,7 @@ $env:WINBRIDGE_RELAY_PAIRING_TICKET_MAX_USES = "1"
 npm run dev:relay
 ```
 
-The host should join before the viewer. Pairing only admits the viewer to the relay room; it does not grant screen, input, clipboard, file, or diagnostic permissions.
+The host should join before the viewer. Pairing only admits a distinct viewer device to the relay room; it does not grant screen, input, clipboard, file, or diagnostic permissions.
 Pairing ticket TTL values must be exact integer milliseconds from `0` through `86400000`; maximum uses must be an exact integer from `1` through `10`.
 
 In separate terminals, exercise the protocol:

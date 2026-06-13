@@ -4,6 +4,7 @@ import {
   createMessageBase,
   encodeProtocolEnvelope,
   PROTOCOL_IDENTIFIER_MAX_LENGTH,
+  SELF_PAIRING_DEVICE_REJECTION_REASON,
   type DeviceIdentity,
   type ProtocolEnvelope
 } from "@winbridge/protocol";
@@ -3375,6 +3376,67 @@ describe("relay runtime integration", () => {
       true
     );
     expect(JSON.stringify(auditSink.records())).not.toContain("999-000");
+  });
+
+  it("rejects self-pairing viewers without exposing the attempted device id in denied join audit", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const host = await openSocket(runtime.url());
+    const viewer = await openSocket(runtime.url());
+    const sharedDeviceId = "dev_shared_1";
+    const hostIdentity: DeviceIdentity = {
+      deviceId: sharedDeviceId,
+      displayName: "Host Private Display",
+      platform: "windows",
+      trustLevel: "local-dev",
+      createdAt: "2026-06-13T09:02:00.000Z"
+    };
+    const viewerIdentity: DeviceIdentity = {
+      deviceId: sharedDeviceId,
+      displayName: "Viewer Private Display",
+      platform: "windows",
+      trustLevel: "unknown",
+      createdAt: "2026-06-13T09:03:00.000Z"
+    };
+
+    host.send(joinMessage("session-demo", "host-1", "host", "123-456", hostIdentity));
+    await waitForProtocolMessage(host, (message) => message.type === "relay-ready");
+
+    viewer.send(joinMessage("session-demo", "viewer-1", "viewer", "123-456", viewerIdentity));
+
+    expect(await waitForJsonMessage(viewer, (message) => message.type === "relay-error")).toMatchObject({
+      type: "relay-error",
+      reason: SELF_PAIRING_DEVICE_REJECTION_REASON
+    });
+    const denied = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.peer.join.denied" &&
+        record.reason === SELF_PAIRING_DEVICE_REJECTION_REASON
+    );
+
+    expect(denied).toMatchObject({
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      sessionId: "session-demo",
+      detail: {
+        messageType: "join-session",
+        pairing: {
+          selfPairing: true
+        },
+        attemptedDeviceIdentity: {
+          deviceIdRedacted: true,
+          deviceIdLength: sharedDeviceId.length,
+          platform: "windows",
+          trustLevel: "unknown",
+          createdAt: "2026-06-13T09:03:00.000Z"
+        }
+      }
+    });
+    expect(denied.detail.attemptedDeviceIdentity).not.toHaveProperty("deviceId");
+    expect(JSON.stringify(denied)).not.toContain(sharedDeviceId);
+    expect(JSON.stringify(denied)).not.toContain("123-456");
+    expectNoAcceptedJoinAudit(auditSink, "viewer-1");
   });
 
   it("audits denied join attempted device identity without display names or authorization effects", async () => {

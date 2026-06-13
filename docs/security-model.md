@@ -39,7 +39,7 @@ Pairing tickets:
 
 Protocol pairing ticket factory inputs are bounded before ticket creation. TTL values must be non-negative exact integer milliseconds within the safe timer range, and max-use values must be exact integers from 1 through 10.
 
-The development relay creates pairing tickets when the host joins a room. Viewer joins must consume that host-created ticket before relay registration. Viewer-first, mismatched, expired, or consumed tickets are rejected before message forwarding.
+The development relay creates pairing tickets when the host joins a room. Viewer joins must consume that host-created ticket before relay registration, and paired-device records must bind distinct host and viewer device ids. Viewer-first, self-pairing, mismatched, expired, or consumed tickets are rejected before message forwarding.
 Pairing ticket TTL and maximum-use configuration is bounded and parsed as exact integers; malformed, empty, partial, negative, non-finite, null, or out-of-range configured values fail before the relay accepts peers or creates host pairing tickets.
 The development relay room is two-party only: one host and one viewer. A second live host or second live viewer with a different peer id is rejected before registration with bounded same-role denial metadata, and the original peer remains registered.
 Live peer ids are exclusive within a development relay session room. Duplicate joins for an already registered peer id are rejected before peer replacement, host pairing-ticket refresh, viewer ticket consumption, paired-device recording, or message forwarding. The same peer id can join again only after disconnect cleanup removes the previous live peer.
@@ -178,7 +178,7 @@ The implementation must reject:
 
 ## Development Relay Pairing
 
-The relay stores salted hashed in-memory pairing tickets rather than raw pairing codes in peer state. Paired-device relationships are recorded only within the source ticket validity window, at or after ticket creation and before ticket expiration. Pairing ticket audit details may record safe metadata such as ticket presence, mismatch/expired/consumed booleans, and remaining use counts.
+The relay stores salted hashed in-memory pairing tickets rather than raw pairing codes in peer state. Paired-device relationships are recorded only for distinct host and viewer device ids within the source ticket validity window, at or after ticket creation and before ticket expiration. Pairing ticket audit details may record safe metadata such as ticket presence, mismatch/expired/consumed booleans, and remaining use counts.
 
 Pairing ticket salts are not secrets, but they prevent the same development pairing code from producing a stable hash across tickets.
 

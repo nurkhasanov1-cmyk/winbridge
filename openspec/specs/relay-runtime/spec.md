@@ -552,20 +552,30 @@ The relay runtime SHALL include bounded device identity metadata in accepted `re
 - **AND** the metadata MUST NOT approve a session, activate host visibility, grant permissions, start capture, send input, reconnect a peer, or bypass consent workflows
 
 ### Requirement: Denied join device identity audit attribution
-The relay runtime SHALL include bounded attempted device identity metadata in `relay.peer.join.denied` audit detail when a schema-valid `join-session` message with schema-valid `deviceIdentity` is denied before registration. Denied join identity metadata MUST remain audit-only and MUST NOT register the peer, consume pairing material, approve a session, activate host visibility, grant permissions, start capture, send input, reconnect a peer, or bypass consent workflows. Denied join audit metadata MUST NOT include raw display names, raw pairing codes, tokens, credentials, protocol payloads, keystrokes, screenshots, screen contents, permissions, authorization identifiers, or full secrets.
+The relay runtime SHALL include bounded attempted device identity metadata in `relay.peer.join.denied` audit detail when a schema-valid `join-session` message with schema-valid `deviceIdentity` is denied before registration. Denied join identity metadata MUST remain audit-only and MUST NOT register the peer, consume pairing material, approve a session, activate host visibility, grant permissions, start capture, send input, reconnect a peer, or bypass consent workflows. Denied join audit metadata MUST NOT include raw display names, raw pairing codes, tokens, credentials, protocol payloads, keystrokes, screenshots, screen contents, permissions, authorization identifiers, or full secrets. When a denied join attempts self-pairing by reusing the host device id as the viewer device id, the denied join audit detail MUST NOT include the raw attempted device id and MUST include bounded redaction metadata instead.
 
 #### Scenario: Denied viewer join includes bounded attempted identity
+
 - **WHEN** a viewer join with schema-valid device identity is denied before registration because pairing credentials do not match
 - **THEN** the denied join audit detail includes `attemptedDeviceIdentity.deviceId`, `attemptedDeviceIdentity.platform`, `attemptedDeviceIdentity.trustLevel`, and `attemptedDeviceIdentity.createdAt`
 - **AND** the denied join audit detail MUST NOT include the viewer display name or raw pairing code
 
 #### Scenario: Denied join redacts device id containing pairing code
+
 - **WHEN** a denied join's schema-valid device identity has a `deviceId` containing the submitted pairing code
 - **THEN** the denied join audit detail MUST NOT include the raw attempted `deviceId`
 - **AND** the denied join audit detail includes bounded redaction metadata for that attempted `deviceId`
 - **AND** the raw submitted pairing code MUST NOT appear anywhere in the audit record
 
+#### Scenario: Denied self-pairing join redacts attempted device id
+
+- **WHEN** a viewer join is denied because its schema-valid `deviceIdentity.deviceId` is identical to the host device id from the active pairing ticket
+- **THEN** the denied join audit detail MUST NOT include the raw attempted `deviceId`
+- **AND** the denied join audit detail includes bounded redaction metadata for that attempted `deviceId`
+- **AND** the denied join audit detail includes a bounded self-pairing denial reason without pairing codes or raw device ids
+
 #### Scenario: Denied identity attribution does not authorize remote actions
+
 - **WHEN** a denied join audit record includes attempted device identity metadata
 - **THEN** the relay treats the metadata as denial attribution only
 - **AND** the metadata MUST NOT register the peer, consume pairing material, approve a session, activate host visibility, grant permissions, start capture, send input, reconnect a peer, or bypass consent workflows
@@ -587,7 +597,6 @@ The relay runtime SHALL redact schema-valid protocol identifiers from relay audi
 - **WHEN** the relay forwards a schema-valid peer message to a registered recipient whose peer id contains secret-bearing metadata
 - **THEN** the accepted forward audit detail MUST NOT include the raw recipient peer id
 - **AND** the peer message is still forwarded according to the existing room and targeting rules
-
 #### Scenario: Safe identifiers remain inspectable
 - **WHEN** relay audit identifiers are schema-valid, bounded, and contain no secret-bearing metadata
 - **THEN** existing readable audit identifier fields remain available for operational correlation

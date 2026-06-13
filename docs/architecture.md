@@ -69,7 +69,7 @@ Provides a development WebSocket relay:
 - Validates environment-derived and injected local TCP ports before opening the listener.
 - Accepts host/viewer peers.
 - Requires session id, peer id, role, and pairing credential.
-- Creates a salted hashed expiring pairing ticket when the host joins, then requires the viewer to consume that ticket before room registration and records paired-device metadata only within the ticket validity window.
+- Creates a salted hashed expiring pairing ticket when the host joins, then requires a distinct viewer device to consume that ticket before room registration and records paired-device metadata only within the ticket validity window.
 - Optionally enforces a non-blank, already trimmed, bounded shared development token with no ASCII control or Unicode bidi/zero-width formatting controls by requiring exactly one matching canonical lowercase `token` query parameter before room registration; missing, duplicate, case-variant, padded, or wrong token parameters fail closed, and when no shared token is configured, token-bearing client URLs are rejected before room registration instead of being silently accepted.
 - Limits a room to one host and one viewer.
 - Treats live peer ids as exclusive within a session room; duplicate joins for an already registered peer id are rejected before replacing the peer send path or mutating pairing-ticket state. The same peer id can join again only after normal disconnect cleanup removes the previous peer.
