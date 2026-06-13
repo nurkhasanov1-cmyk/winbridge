@@ -95,6 +95,8 @@ const knownOptions = new Set([
   "viewer-disconnect-after-ms"
 ]);
 
+const hostRejectedViewerWorkflowOptions = ["request"] as const;
+
 const viewerRejectedHostWorkflowOptions = [
   "grant",
   "host-decision",
@@ -137,6 +139,7 @@ export function parseArgs(
   }
 
   const options = parseOptionMap(raw.slice(1));
+  assertNoHostViewerWorkflowOptions(role, options);
   assertNoViewerHostWorkflowOptions(role, options);
   const sessionId = parseSessionId(options.get("session") ?? "demo");
   const pairingCode = parsePairingCode(options.get("pairing") ?? "123-456");
@@ -220,6 +223,18 @@ export function parseArgs(
     viewerStatusAfterMs,
     viewerDisconnectAfterMs
   };
+}
+
+function assertNoHostViewerWorkflowOptions(role: SessionRole, options: Map<string, string>): void {
+  if (role !== "host") {
+    return;
+  }
+
+  for (const optionName of hostRejectedViewerWorkflowOptions) {
+    if (options.has(optionName)) {
+      throw new AgentShellUsageError();
+    }
+  }
 }
 
 function assertNoViewerHostWorkflowOptions(role: SessionRole, options: Map<string, string>): void {

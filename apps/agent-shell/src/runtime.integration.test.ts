@@ -228,6 +228,11 @@ describe("agent shell consent workflow", () => {
         "Runtime requested permissions"
       ],
       [
+        "host requested permissions",
+        { requestedPermissions: ["screen:view"] },
+        "Runtime requested permissions are only valid for viewer runtimes"
+      ],
+      [
         "non-array host grant scope",
         { hostDecision: "approve", hostGrantPermissions: "screen:view" as unknown as Permission[] },
         "Runtime host grant scope"
@@ -609,6 +614,14 @@ describe("agent shell consent workflow", () => {
       hostResumeAfterMs: 0,
       hostRevokeAfterMs: 0,
       hostTerminateAfterMs: 0
+    }));
+
+    await runtime.stop();
+  });
+
+  it("accepts empty host requested permissions before relay startup", async () => {
+    const runtime = createAgentShellRuntime(createRuntimeOptions({
+      requestedPermissions: []
     }));
 
     await runtime.stop();

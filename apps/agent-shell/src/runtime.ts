@@ -215,6 +215,8 @@ const RUNTIME_WORKFLOW_REASON_ERROR_MESSAGE =
   "Runtime workflow reasons must be non-blank, already trimmed, 240 characters or less, contain no ASCII control characters, and contain no Unicode bidi or zero-width formatting controls";
 const RUNTIME_HOST_DISCONNECT_REASON_ERROR_MESSAGE =
   "Runtime host disconnect reason is only valid for host runtimes and must fit WebSocket close reason bounds";
+const RUNTIME_VIEWER_REQUEST_OPTIONS_ERROR_MESSAGE =
+  "Runtime requested permissions are only valid for viewer runtimes";
 const RUNTIME_AUTHORIZATION_TTL_ERROR_MESSAGE =
   "Runtime authorization TTL must be an integer from 1 through 2147483647";
 const RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE =
@@ -2113,6 +2115,7 @@ function validateRuntimeOptions(options: AgentShellRuntimeOptions): URL {
   assertRuntimeDisplayName(options.displayName);
   assertRuntimeToken(options.token);
   assertRuntimeRequestedPermissions(options.requestedPermissions);
+  assertRuntimeHostHasNoViewerRequestOptions(options);
   assertRuntimeRevokePermission(options.hostRevokePermission);
   assertRuntimeVisibleToHost(options.visibleToHost);
   assertValidHostDecision(options.hostDecision);
@@ -2296,6 +2299,16 @@ function assertRuntimeRequestedPermissions(value: unknown): asserts value is Per
 
   if (new Set(value).size !== value.length) {
     throw new Error(RUNTIME_PERMISSION_ERROR_MESSAGE);
+  }
+}
+
+function assertRuntimeHostHasNoViewerRequestOptions(options: AgentShellRuntimeOptions): void {
+  if (options.role !== "host") {
+    return;
+  }
+
+  if (options.requestedPermissions !== undefined && options.requestedPermissions.length > 0) {
+    throw new Error(RUNTIME_VIEWER_REQUEST_OPTIONS_ERROR_MESSAGE);
   }
 }
 

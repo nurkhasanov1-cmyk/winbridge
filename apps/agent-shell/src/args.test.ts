@@ -95,8 +95,6 @@ describe("agent shell arguments", () => {
         "approve",
         "--visible-session",
         "true",
-        "--request",
-        "screen:view",
         "--pause-after-ms",
         "1000"
       ],
@@ -108,7 +106,6 @@ describe("agent shell arguments", () => {
       hostStatusAfterMs: 0,
       hostDecision: "approve",
       visibleToHost: true,
-      requestedPermissions: ["screen:view"],
       hostPauseAfterMs: 1000
     });
   });
@@ -205,6 +202,13 @@ describe("agent shell arguments", () => {
         AgentShellUsageError
       );
     }
+  });
+
+  it("rejects explicit viewer request options for host runtimes", () => {
+    expect(() => parseArgs(["host", "--request", "screen:view"], {}, 42)).toThrow(AgentShellUsageError);
+    expect(() => parseArgs(["host", "--request", "screen:view,input:pointer"], {}, 42)).toThrow(
+      AgentShellUsageError
+    );
   });
 
   it("keeps viewer-only workflow options available for viewer runtimes", () => {
@@ -933,8 +937,6 @@ describe("agent shell arguments", () => {
     const args = parseArgs(
       [
         "host",
-        "--request",
-        "screen:view,input:pointer",
         "--host-decision",
         "approve",
         "--grant",
@@ -964,11 +966,10 @@ describe("agent shell arguments", () => {
 
     expect(args).toMatchObject({
       auditLogPath: "logs/audit.jsonl",
-        requestedPermissions: ["screen:view", "input:pointer"],
-        hostGrantPermissions: ["screen:view"],
-        hostDecision: "approve",
-        hostConsentPrompt: false,
-        visibleToHost: true,
+      hostGrantPermissions: ["screen:view"],
+      hostDecision: "approve",
+      hostConsentPrompt: false,
+      visibleToHost: true,
       authorizationTtlMs: 600000,
       hostRevokePermission: "input:pointer",
       hostRevokeReason: "Host revoked pointer",
