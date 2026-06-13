@@ -2209,15 +2209,21 @@ function assertRuntimeRole(value: unknown): asserts value is SessionRole {
 
 function assertRuntimeIdentifiers(options: AgentShellRuntimeOptions): void {
   try {
-    SessionIdSchema.parse(options.sessionId);
+    const sessionId = SessionIdSchema.parse(options.sessionId);
     PairingCodeSchema.parse(options.pairingCode);
-    PeerIdSchema.parse(options.peerId);
+    const peerId = PeerIdSchema.parse(options.peerId);
     const deviceId = DeviceIdentitySchema.shape.deviceId.parse(options.deviceId);
-    if (hasSecretBearingProtocolIdentifierMetadata(deviceId)) {
-      throw new Error("Device id must not contain secret-bearing metadata");
-    }
+    assertNoSecretBearingProtocolIdentifierMetadata(sessionId);
+    assertNoSecretBearingProtocolIdentifierMetadata(peerId);
+    assertNoSecretBearingProtocolIdentifierMetadata(deviceId);
   } catch {
     throw new Error(RUNTIME_IDENTIFIER_ERROR_MESSAGE);
+  }
+}
+
+function assertNoSecretBearingProtocolIdentifierMetadata(identifier: string): void {
+  if (hasSecretBearingProtocolIdentifierMetadata(identifier)) {
+    throw new Error("Protocol identifier must not contain secret-bearing metadata");
   }
 }
 

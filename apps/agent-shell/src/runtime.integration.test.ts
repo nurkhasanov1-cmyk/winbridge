@@ -110,6 +110,12 @@ const SECRET_BEARING_DISPLAY_NAME_CASES = [
   "diagnostics dump: raw-display-diagnostics",
   "screen content: raw-display-screen"
 ] as const;
+const SECRET_BEARING_ROUTING_ID_CASES = [
+  "token-raw-routing-secret",
+  "credential-raw-routing-value",
+  "cookie-raw-routing-value",
+  "authorization-raw-routing-value"
+] as const;
 const SECRET_BEARING_DEVICE_ID_CASES = [
   "token-raw-device-secret",
   "credential-raw-device-value",
@@ -163,6 +169,16 @@ describe("agent shell consent workflow", () => {
       ["malformed session id", { sessionId: "session demo" }, "Runtime protocol identifiers"],
       ["malformed pairing code", { pairingCode: "secret" }, "Runtime protocol identifiers"],
       ["malformed peer id", { peerId: "host/1" }, "Runtime protocol identifiers"],
+      [
+        "secret-bearing session id",
+        { sessionId: "token-raw-routing-secret" },
+        "Runtime protocol identifiers"
+      ],
+      [
+        "secret-bearing peer id",
+        { peerId: "credential-raw-routing-value" },
+        "Runtime protocol identifiers"
+      ],
       ["malformed device id", { deviceId: "dev1" }, "Runtime protocol identifiers"],
       [
         "secret-bearing device id",
@@ -566,6 +582,25 @@ describe("agent shell consent workflow", () => {
     }
   });
 
+  it("rejects secret-bearing runtime session and peer ids without exposing raw text", () => {
+    for (const identifier of SECRET_BEARING_ROUTING_ID_CASES) {
+      for (const option of ["sessionId", "peerId"] as const) {
+        try {
+          createAgentShellRuntime(createRuntimeOptions({
+            [option]: identifier,
+            logger: silentLogger
+          }));
+          throw new Error(`Expected secret-bearing runtime ${option} to be rejected`);
+        } catch (error) {
+          expect(error).toBeInstanceOf(Error);
+          expect((error as Error).message).toContain("Runtime protocol identifiers");
+          expect((error as Error).message).not.toContain("raw-routing");
+          expect((error as Error).message).not.toContain(identifier);
+        }
+      }
+    }
+  });
+
   it("rejects secret-bearing runtime workflow reasons without exposing raw reason text", () => {
     const reasonOptions: Array<keyof AgentShellRuntimeOptions> = [
       "decisionReason",
@@ -610,6 +645,15 @@ describe("agent shell consent workflow", () => {
   it("accepts safe custom runtime device ids before relay startup", async () => {
     const runtime = createAgentShellRuntime(createRuntimeOptions({
       deviceId: "device-host-01"
+    }));
+
+    await runtime.stop();
+  });
+
+  it("accepts safe custom runtime session and peer ids before relay startup", async () => {
+    const runtime = createAgentShellRuntime(createRuntimeOptions({
+      sessionId: "session-demo-42",
+      peerId: "host-42"
     }));
 
     await runtime.stop();

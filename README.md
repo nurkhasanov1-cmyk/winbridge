@@ -136,7 +136,7 @@ npm run dev:agent -- viewer --session demo --pairing 123-456
 ```
 
 Optional `--name` display values must be non-blank, already trimmed, at most 120 characters, contain no ASCII control characters, contain no Unicode bidi or zero-width formatting controls, and contain no secret-bearing metadata such as raw tokens, credentials, pairing codes, authorization headers, cookies, private keys, screen contents, clipboard contents, file-transfer contents, or diagnostics dumps.
-Optional `--device` values are protocol identifiers for development metadata only; they must be syntactically valid and must not contain secret-bearing marker text such as tokens, credentials, cookies, keys, or authorization metadata.
+Optional `--session`, `--peer`, and `--device` values are protocol identifiers for development metadata only; they must be syntactically valid and must not contain secret-bearing marker text such as tokens, credentials, cookies, keys, or authorization metadata.
 Viewer-only `--request` values must use exact comma-separated permission tokens with no spaces around entries, for example `screen:view,input:pointer`. Host invocations reject explicit `--request` before runtime startup.
 Optional host `--grant` values use the same exact permission-token format and can only narrow an approved host grant to a non-empty subset of the current viewer request.
 Clipboard permissions `clipboard:read` and `clipboard:write` are intentionally rejected until a future OpenSpec change and security review define a consent-first clipboard capability.

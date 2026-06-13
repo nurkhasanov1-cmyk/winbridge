@@ -322,7 +322,10 @@ function relayUrlHasUserInfoMarker(raw: string): boolean {
 
 function parseSessionId(raw: string): string {
   try {
-    return SessionIdSchema.parse(raw);
+    const sessionId = SessionIdSchema.parse(raw);
+    assertNoSecretBearingProtocolIdentifierMetadata(sessionId);
+
+    return sessionId;
   } catch {
     throw new AgentShellUsageError();
   }
@@ -330,7 +333,10 @@ function parseSessionId(raw: string): string {
 
 function parsePeerId(raw: string): string {
   try {
-    return PeerIdSchema.parse(raw);
+    const peerId = PeerIdSchema.parse(raw);
+    assertNoSecretBearingProtocolIdentifierMetadata(peerId);
+
+    return peerId;
   } catch {
     throw new AgentShellUsageError();
   }
@@ -339,13 +345,17 @@ function parsePeerId(raw: string): string {
 function parseDeviceId(raw: string): string {
   try {
     const deviceId = ProtocolIdentifierSchema.min(8).parse(raw);
-    if (hasSecretBearingProtocolIdentifierMetadata(deviceId)) {
-      throw new Error("Device id must not contain secret-bearing metadata");
-    }
+    assertNoSecretBearingProtocolIdentifierMetadata(deviceId);
 
     return deviceId;
   } catch {
     throw new AgentShellUsageError();
+  }
+}
+
+function assertNoSecretBearingProtocolIdentifierMetadata(identifier: string): void {
+  if (hasSecretBearingProtocolIdentifierMetadata(identifier)) {
+    throw new Error("Protocol identifier must not contain secret-bearing metadata");
   }
 }
 

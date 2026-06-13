@@ -24,6 +24,12 @@ describe("agent shell arguments", () => {
     "diagnostics dump: raw-display-diagnostics",
     "screen content: raw-display-screen"
   ] as const;
+  const secretBearingRoutingIds = [
+    "token-raw-routing-secret",
+    "credential-raw-routing-value",
+    "cookie-raw-routing-value",
+    "authorization-raw-routing-value"
+  ] as const;
   const secretBearingDeviceIds = [
     "token-raw-device-secret",
     "credential-raw-device-value",
@@ -644,6 +650,21 @@ describe("agent shell arguments", () => {
     );
   });
 
+  it("rejects secret-bearing session and peer identifiers without exposing raw text", () => {
+    for (const identifier of secretBearingRoutingIds) {
+      for (const option of ["session", "peer"] as const) {
+        try {
+          parseArgs(["viewer", `--${option}`, identifier], {}, 42);
+          throw new Error(`Expected secret-bearing CLI ${option} id to be rejected`);
+        } catch (error) {
+          expect(error).toBeInstanceOf(AgentShellUsageError);
+          expect((error as Error).message).not.toContain("raw-routing");
+          expect((error as Error).message).not.toContain(identifier);
+        }
+      }
+    }
+  });
+
   it("rejects secret-bearing device identifiers without exposing raw text", () => {
     for (const deviceId of secretBearingDeviceIds) {
       try {
@@ -661,6 +682,15 @@ describe("agent shell arguments", () => {
     expect(parseArgs(["viewer", "--device", "device-viewer-42"], {}, 42).deviceId).toBe(
       "device-viewer-42"
     );
+  });
+
+  it("parses safe custom session and peer identifiers", () => {
+    expect(
+      parseArgs(["viewer", "--session", "session-demo-42", "--peer", "viewer-42"], {}, 42)
+    ).toMatchObject({
+      sessionId: "session-demo-42",
+      peerId: "viewer-42"
+    });
   });
 
   it("parses valid display names", () => {
