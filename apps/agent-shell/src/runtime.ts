@@ -144,6 +144,7 @@ export type AgentShellReasonRedacted<T> = T extends unknown
 export type AgentShellRuntime = {
   start(): Promise<void>;
   stop(): Promise<void>;
+  disconnect(): void;
   send(message: ProtocolEnvelope): void;
 };
 
@@ -176,6 +177,10 @@ const RUNTIME_WORKFLOW_TIMER_ERROR_MESSAGE =
 const AGENT_SHELL_RUNTIME_ERROR_MESSAGE = "Agent shell runtime error";
 const AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell local peer is disconnected";
 const AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE = "Agent shell peer is disconnected";
+const AGENT_SHELL_LOCAL_DISCONNECT_ROLE_ERROR_MESSAGE =
+  "Agent shell local disconnect control is only valid for host runtimes";
+const AGENT_SHELL_LOCAL_DISCONNECT_AUTHORIZATION_ERROR_MESSAGE =
+  "Agent shell local disconnect control requires active visible host authorization";
 const AGENT_SHELL_SIGNAL_AUTHORIZATION_ERROR_MESSAGE =
   "Agent shell signal requires active visible screen authorization";
 const AGENT_SHELL_SIGNAL_ROUTING_ERROR_MESSAGE =
@@ -326,6 +331,30 @@ export function createAgentShellRuntime(options: AgentShellRuntimeOptions): Agen
         socketToClose.once("close", () => resolve());
         socketToClose.close();
       });
+    },
+
+    disconnect() {
+      if (!socket) {
+        throw new Error("Agent shell runtime is not started");
+      }
+
+      if (sessionState.localPeerDisconnected) {
+        throw new Error(AGENT_SHELL_LOCAL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      if (sessionState.remotePeerDisconnected) {
+        throw new Error(AGENT_SHELL_PEER_DISCONNECTED_ERROR_MESSAGE);
+      }
+
+      const authorization = getLocalHostDisconnectAuthorization(options, sessionState);
+      closeLocalHostConnection(
+        socket,
+        options,
+        sessionState,
+        authorization,
+        "Host disconnect control",
+        "disconnect control closing local relay connection"
+      );
     },
 
     send(message: ProtocolEnvelope) {
@@ -2214,11 +2243,85 @@ function scheduleHostDisconnect(
       return;
     }
 
-    sessionState.localPeerDisconnected = true;
-    deactivateHostIndicator(options, sessionState, "local-disconnect");
-    options.logger?.log("[winbridge-agent] disconnect simulation closing local relay connection");
-    socket?.close(1000, "Host disconnect simulation");
+    const authorization = sessionState.hostAuthorization;
+    if (!hasLocalHostDisconnectAuthorization(authorization)) {
+      options.logger?.log("[winbridge-agent] disconnect skipped because authorization is not active visible");
+      return;
+    }
+
+    closeLocalHostConnection(
+      socket,
+      options,
+      sessionState,
+      authorization,
+      "Host disconnect simulation",
+      "disconnect simulation closing local relay connection"
+    );
   }, options.hostDisconnectAfterMs);
+}
+
+function getLocalHostDisconnectAuthorization(
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState
+): RuntimeAuthorizationSnapshot {
+  if (options.role !== "host") {
+    throw new Error(AGENT_SHELL_LOCAL_DISCONNECT_ROLE_ERROR_MESSAGE);
+  }
+
+  const authorization = sessionState.hostAuthorization;
+  if (!hasLocalHostDisconnectAuthorization(authorization)) {
+    throw new Error(AGENT_SHELL_LOCAL_DISCONNECT_AUTHORIZATION_ERROR_MESSAGE);
+  }
+
+  return authorization;
+}
+
+function hasLocalHostDisconnectAuthorization(
+  snapshot: RuntimeAuthorizationSnapshot | undefined
+): snapshot is RuntimeAuthorizationSnapshot {
+  return Boolean(
+    snapshot &&
+      snapshot.visibleToHost &&
+      (snapshot.status === "active" || snapshot.status === "paused") &&
+      snapshot.expiresAt &&
+      !hasAuthorizationExpired(snapshot.expiresAt)
+  );
+}
+
+function closeLocalHostConnection(
+  socket: WebSocket | undefined,
+  options: AgentShellRuntimeOptions,
+  sessionState: AgentShellSessionState,
+  authorization: RuntimeAuthorizationSnapshot,
+  closeReason: string,
+  logMessage: string
+): void {
+  persistLocalHostDisconnectAudit(options, authorization);
+  sessionState.localPeerDisconnected = true;
+  deactivateHostIndicator(options, sessionState, "local-disconnect");
+  options.logger?.log(`[winbridge-agent] ${logMessage}`);
+  socket?.close(1000, closeReason);
+}
+
+function persistLocalHostDisconnectAudit(
+  options: AgentShellRuntimeOptions,
+  snapshot: RuntimeAuthorizationSnapshot
+): void {
+  try {
+    writeDevelopmentAuditRecord(options, {
+      action: "agent-shell.session.disconnected",
+      outcome: "accepted",
+      detail: {
+        authorizationId: snapshot.authorizationId,
+        authorizationStatus: snapshot.status,
+        cause: "local-disconnect",
+        visibleToHost: snapshot.visibleToHost,
+        permissionCount: snapshot.permissions.length
+      }
+    });
+  } catch (error) {
+    reportRuntimeError(options, error);
+  }
 }
 
 function canSendDelayedHostWorkflow(
@@ -2249,6 +2352,23 @@ function prepareDevelopmentAuditEvent(
   options: AgentShellRuntimeOptions,
   input: DevelopmentAuditInput
 ): DevelopmentAuditEvent {
+  const eventId = writeDevelopmentAuditRecord(options, input);
+
+  return {
+    ...createMessageBase(options.sessionId),
+    type: "audit-event",
+    eventId,
+    actorPeerId: options.peerId,
+    action: input.action,
+    outcome: input.outcome,
+    detail: input.detail
+  };
+}
+
+function writeDevelopmentAuditRecord(
+  options: AgentShellRuntimeOptions,
+  input: DevelopmentAuditInput
+): string {
   const eventId = `audit_${randomUUID()}`;
   options.auditSink?.write({
     eventId,
@@ -2263,15 +2383,7 @@ function prepareDevelopmentAuditEvent(
     detail: input.detail
   });
 
-  return {
-    ...createMessageBase(options.sessionId),
-    type: "audit-event",
-    eventId,
-    actorPeerId: options.peerId,
-    action: input.action,
-    outcome: input.outcome,
-    detail: input.detail
-  };
+  return eventId;
 }
 
 export function createAgentShellErrorDiagnostic(error: unknown): AgentShellErrorDiagnostic {
