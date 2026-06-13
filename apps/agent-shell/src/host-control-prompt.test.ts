@@ -42,6 +42,7 @@ describe("interactive host control prompt", () => {
       "revoke file-transfer",
       "revoke input:keylogger",
       "revoke screen:view raw-token",
+      "terminate raw-token",
       "disconnect raw-token",
       "raw-token"
     ]) {
@@ -49,25 +50,19 @@ describe("interactive host control prompt", () => {
     }
   });
 
-  it("dispatches accepted commands through runtime controls", async () => {
+  it("dispatches accepted non-terminal commands through runtime controls", async () => {
     const runtime = createRuntimeSpy();
     const output = createCapturingOutput();
-    const input = PassThrough.from([
-      "pause\n",
-      "resume\n",
-      "revoke screen:view\n",
-      "terminate\n",
-      "disconnect\n"
-    ]);
+    const input = PassThrough.from(["pause\n", "resume\n", "revoke screen:view\n"]);
 
     startInteractiveHostControlPrompt(runtime, { input, output });
-    await waitForText(output, (text) => countMatches(text, "host control accepted") === 5);
+    await waitForText(output, (text) => countMatches(text, "host control accepted") === 3);
 
     expect(runtime.pause).toHaveBeenCalledTimes(1);
     expect(runtime.resume).toHaveBeenCalledTimes(1);
     expect(runtime.revokePermission).toHaveBeenCalledWith("screen:view");
-    expect(runtime.terminate).toHaveBeenCalledTimes(1);
-    expect(runtime.disconnect).toHaveBeenCalledTimes(1);
+    expect(runtime.terminate).not.toHaveBeenCalled();
+    expect(runtime.disconnect).not.toHaveBeenCalled();
     expect(runtime.leave).not.toHaveBeenCalled();
     expect(runtime.send).not.toHaveBeenCalled();
     expect(output.text()).not.toContain("screen:view");
@@ -192,6 +187,75 @@ describe("interactive host control prompt", () => {
       expect(runtime.send).not.toHaveBeenCalled();
       expect(output.text()).not.toContain("[winbridge-agent] host status");
       expect(output.text()).not.toContain("raw-token");
+    } finally {
+      handle.stop();
+      input.end();
+    }
+  });
+
+  it("stops the prompt after successful host terminate", async () => {
+    const runtime = createRuntimeSpy();
+    const output = createCapturingOutput();
+    const input = new PassThrough();
+
+    const handle = startInteractiveHostControlPrompt(runtime, { input, output });
+    try {
+      input.write("terminate\n");
+      await waitForText(output, (text) => text.includes("host control accepted action=terminate"));
+
+      input.write("status\n");
+      await waitForSettledPromptInput();
+
+      expect(runtime.terminate).toHaveBeenCalledTimes(1);
+      expect(runtime.getHostStatus).not.toHaveBeenCalled();
+      expect(runtime.pause).not.toHaveBeenCalled();
+      expect(runtime.resume).not.toHaveBeenCalled();
+      expect(runtime.revokePermission).not.toHaveBeenCalled();
+      expect(runtime.disconnect).not.toHaveBeenCalled();
+      expect(runtime.leave).not.toHaveBeenCalled();
+      expect(runtime.send).not.toHaveBeenCalled();
+      expect(output.text()).not.toContain("[winbridge-agent] host status");
+      expect(output.text()).not.toContain("raw-token");
+    } finally {
+      handle.stop();
+      input.end();
+    }
+  });
+
+  it("keeps the prompt available after failed host terminate", async () => {
+    const rawErrorMessage = "terminate failed with raw-token at C:\\Users\\Nur\\secret";
+    const runtime = createRuntimeSpy();
+    vi.mocked(runtime.terminate).mockImplementation(() => {
+      throw new Error(rawErrorMessage);
+    });
+    vi.mocked(runtime.getHostStatus).mockReturnValue({
+      state: "inactive",
+      visibleToHost: false,
+      permissionCount: 0,
+      inactiveCause: "terminated"
+    });
+    const output = createCapturingOutput();
+    const input = new PassThrough();
+
+    const handle = startInteractiveHostControlPrompt(runtime, { input, output });
+    try {
+      input.write("terminate\n");
+      await waitForText(output, (text) => text.includes("[winbridge-agent] error messageBytes="));
+      input.write("status\n");
+      await waitForText(output, (text) => text.includes("inactiveCause=terminated"));
+
+      expect(runtime.terminate).toHaveBeenCalledTimes(1);
+      expect(runtime.getHostStatus).toHaveBeenCalledTimes(1);
+      expect(runtime.pause).not.toHaveBeenCalled();
+      expect(runtime.resume).not.toHaveBeenCalled();
+      expect(runtime.revokePermission).not.toHaveBeenCalled();
+      expect(runtime.disconnect).not.toHaveBeenCalled();
+      expect(runtime.leave).not.toHaveBeenCalled();
+      expect(runtime.send).not.toHaveBeenCalled();
+      expect(output.text()).toContain(`[winbridge-agent] error messageBytes=${Buffer.byteLength(rawErrorMessage)}`);
+      expect(output.text()).not.toContain(rawErrorMessage);
+      expect(output.text()).not.toContain("raw-token");
+      expect(output.text()).not.toContain("C:\\Users\\Nur");
     } finally {
       handle.stop();
       input.end();

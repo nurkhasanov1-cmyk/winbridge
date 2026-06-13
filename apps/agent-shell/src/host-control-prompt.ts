@@ -163,7 +163,7 @@ function handleHostControlLine(
 
     runHostControlCommand(runtime, command);
     output.write(`${HOST_CONTROL_ACCEPTED_PREFIX} action=${command.action}\n`);
-    if (command.action === "disconnect") {
+    if (command.action === "disconnect" || command.action === "terminate") {
       stopPrompt();
     }
   } catch (error) {
