@@ -2944,6 +2944,114 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(auditSink.records())).not.toContain("999-000");
   });
 
+  it("audits denied join attempted device identity without display names or authorization effects", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const host = await openSocket(runtime.url());
+    const viewer = await openSocket(runtime.url());
+    const viewerIdentity: DeviceIdentity = {
+      deviceId: "dev_viewer_denied_1",
+      displayName: "Denied Viewer Private Display",
+      platform: "windows",
+      trustLevel: "unknown",
+      createdAt: "2026-06-13T09:00:00.000Z"
+    };
+
+    host.send(joinMessage("session-demo", "host-1", "host", "123-456"));
+    await waitForProtocolMessage(host, (message) => message.type === "relay-ready");
+
+    viewer.send(joinMessage("session-demo", "viewer-1", "viewer", "999-000", viewerIdentity));
+
+    expect(await waitForJsonMessage(viewer, (message) => message.type === "relay-error")).toMatchObject({
+      type: "relay-error",
+      reason: "Pairing code mismatch"
+    });
+    const denied = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.peer.join.denied" &&
+        record.reason === "Pairing code mismatch"
+    );
+
+    expect(denied).toMatchObject({
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      sessionId: "session-demo",
+      detail: {
+        messageType: "join-session",
+        attemptedDeviceIdentity: {
+          deviceId: "dev_viewer_denied_1",
+          platform: "windows",
+          trustLevel: "unknown",
+          createdAt: "2026-06-13T09:00:00.000Z"
+        }
+      }
+    });
+    expect(denied.detail).not.toHaveProperty("displayName");
+    expect(denied.detail).not.toHaveProperty("permissions");
+    expect(denied.detail).not.toHaveProperty("authorizationId");
+
+    const serialized = JSON.stringify(denied);
+    expect(serialized).not.toContain("Denied Viewer Private Display");
+    expect(serialized).not.toContain("999-000");
+    expect(serialized).not.toContain("screen:view");
+    expect(serialized).not.toContain("input:pointer");
+  });
+
+  it("redacts denied join attempted device ids that contain the pairing code", async () => {
+    const auditSink = new MemoryAuditSink();
+    const runtime = await startRuntime({ auditSink });
+    const viewer = await openSocket(runtime.url());
+    const viewerIdentity: DeviceIdentity = {
+      deviceId: "dev_123-456_viewer",
+      displayName: "Redacted Device Private Display",
+      platform: "windows",
+      trustLevel: "local-dev",
+      createdAt: "2026-06-13T09:01:00.000Z"
+    };
+
+    viewer.send(joinMessage("session-demo", "viewer-1", "viewer", "123-456", viewerIdentity));
+
+    expect(await waitForJsonMessage(viewer, (message) => message.type === "relay-error")).toMatchObject({
+      type: "relay-error",
+      reason: "Host pairing ticket required"
+    });
+    const denied = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.peer.join.denied" &&
+        record.reason === "Host pairing ticket required"
+    );
+
+    expect(denied).toMatchObject({
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      sessionId: "session-demo",
+      detail: {
+        messageType: "join-session",
+        pairing: {
+          ticketMissing: true
+        },
+        attemptedDeviceIdentity: {
+          platform: "windows",
+          trustLevel: "local-dev",
+          createdAt: "2026-06-13T09:01:00.000Z",
+          deviceIdRedacted: true,
+          deviceIdLength: "dev_123-456_viewer".length
+        }
+      }
+    });
+    expect(denied.detail).not.toHaveProperty("permissions");
+    expect(denied.detail).not.toHaveProperty("authorizationId");
+
+    const serialized = JSON.stringify(denied);
+    expect(serialized).not.toContain("dev_123-456_viewer");
+    expect(serialized).not.toContain("Redacted Device Private Display");
+    expect(serialized).not.toContain("123-456");
+    expect(serialized).not.toContain("screen:view");
+    expect(serialized).not.toContain("input:pointer");
+  });
+
   it("rejects a viewer after the host pairing ticket expires", async () => {
     const auditSink = new MemoryAuditSink();
     const runtime = await startRuntime({

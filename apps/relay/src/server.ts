@@ -96,6 +96,14 @@ type RelayJoinAuditDeviceIdentity = Pick<
   DeviceIdentity,
   "createdAt" | "deviceId" | "platform" | "trustLevel"
 >;
+type RelayDeniedJoinAuditDeviceIdentity = Omit<
+  RelayJoinAuditDeviceIdentity,
+  "deviceId"
+> & {
+  deviceId?: string;
+  deviceIdRedacted?: boolean;
+  deviceIdLength?: number;
+};
 
 export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRuntime {
   const port = normalizeRelayPort(options.port === undefined ? 8787 : options.port);
@@ -933,6 +941,10 @@ function joinDenialAuditAttribution(envelope: ProtocolEnvelope): {
   const detail: AuditDetail = {};
   const sessionIdSafe = isDeniedJoinIdentifierSafe(envelope.sessionId, envelope.pairingCode);
   const peerIdSafe = isDeniedJoinIdentifierSafe(envelope.peerId, envelope.pairingCode);
+  const attemptedDeviceIdentity = relayDeniedJoinAuditDeviceIdentity(
+    envelope.deviceIdentity,
+    envelope.pairingCode
+  );
 
   if (!sessionIdSafe) {
     detail.attemptedSessionIdRedacted = true;
@@ -944,6 +956,10 @@ function joinDenialAuditAttribution(envelope: ProtocolEnvelope): {
     detail.attemptedPeerIdLength = envelope.peerId.length;
   }
 
+  if (attemptedDeviceIdentity) {
+    detail.attemptedDeviceIdentity = attemptedDeviceIdentity;
+  }
+
   return {
     sessionId: sessionIdSafe ? envelope.sessionId : undefined,
     peerId: peerIdSafe ? envelope.peerId : undefined,
@@ -953,6 +969,30 @@ function joinDenialAuditAttribution(envelope: ProtocolEnvelope): {
 
 function isDeniedJoinIdentifierSafe(identifier: string, pairingCode: string): boolean {
   return !identifier.includes(pairingCode);
+}
+
+function relayDeniedJoinAuditDeviceIdentity(
+  deviceIdentity: DeviceIdentity | undefined,
+  pairingCode: string
+): RelayDeniedJoinAuditDeviceIdentity | undefined {
+  if (!deviceIdentity) {
+    return undefined;
+  }
+
+  const auditIdentity: RelayDeniedJoinAuditDeviceIdentity = {
+    createdAt: deviceIdentity.createdAt,
+    platform: deviceIdentity.platform,
+    trustLevel: deviceIdentity.trustLevel
+  };
+
+  if (isDeniedJoinIdentifierSafe(deviceIdentity.deviceId, pairingCode)) {
+    auditIdentity.deviceId = deviceIdentity.deviceId;
+  } else {
+    auditIdentity.deviceIdRedacted = true;
+    auditIdentity.deviceIdLength = deviceIdentity.deviceId.length;
+  }
+
+  return auditIdentity;
 }
 
 function pairingDeniedAuditDetail(reason: string) {
