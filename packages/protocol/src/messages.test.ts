@@ -7,6 +7,7 @@ import {
 import type { AuditDetail } from "./audit.js";
 import type { JsonObject } from "./json.js";
 import { assertConsentBoundGrant } from "./session.js";
+import type { SessionGrant } from "./session.js";
 
 const unsafePermissionShapes = [
   "remote-shell",
@@ -28,6 +29,11 @@ const secretBearingReasons = [
   "diagnostics dump: raw-protocol-diagnostics",
   "screen content: raw-protocol-screen"
 ] as const;
+
+function expectImmutableSessionGrantSnapshot(grant: SessionGrant): void {
+  expect(Object.isFrozen(grant)).toBe(true);
+  expect(Object.isFrozen(grant.permissions)).toBe(true);
+}
 const secretBearingDisplayNames = [
   "Authorization: Bearer raw-display-token",
   "credential: raw-display-credential",
@@ -3174,6 +3180,35 @@ describe("session grants", () => {
     expect(grant.permissions).toContain("screen:view");
   });
 
+  it("returns immutable consent-bound grant snapshots", () => {
+    const grant = assertConsentBoundGrant({
+      sessionId: "session-demo",
+      hostPeerId: "host-1",
+      viewerPeerId: "viewer-1",
+      permissions: ["screen:view"],
+      requiresHostApproval: true,
+      visibleSessionRequired: true,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      auditId: "audit-demo"
+    });
+
+    expectImmutableSessionGrantSnapshot(grant);
+    expect(() => grant.permissions.push("input:pointer")).toThrow(TypeError);
+    expect(() => {
+      // @ts-expect-error Runtime guard matters for external mutation.
+      grant.requiresHostApproval = false;
+    }).toThrow(TypeError);
+    expect(() => {
+      // @ts-expect-error Runtime guard matters for external mutation.
+      grant.visibleSessionRequired = false;
+    }).toThrow(TypeError);
+    expect(grant).toMatchObject({
+      permissions: ["screen:view"],
+      requiresHostApproval: true,
+      visibleSessionRequired: true
+    });
+  });
+
   it("rejects expired grants", () => {
     expect(() =>
       assertConsentBoundGrant({
@@ -3244,6 +3279,37 @@ describe("session grants", () => {
         auditId: "a".repeat(129)
       })
     ).toThrow();
+  });
+
+  it("rejects session grants with unknown fields or unavailable permissions", () => {
+    expect(() =>
+      assertConsentBoundGrant({
+        sessionId: "session-demo",
+        hostPeerId: "host-1",
+        viewerPeerId: "viewer-1",
+        permissions: ["screen:view"],
+        requiresHostApproval: true,
+        visibleSessionRequired: true,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        auditId: "audit-demo",
+        unknownFixedField: "must-fail"
+      } as unknown as Parameters<typeof assertConsentBoundGrant>[0])
+    ).toThrow();
+
+    for (const permission of ["clipboard:read", "clipboard:write", "file-transfer"] as const) {
+      expect(() =>
+        assertConsentBoundGrant({
+          sessionId: "session-demo",
+          hostPeerId: "host-1",
+          viewerPeerId: "viewer-1",
+          permissions: [permission],
+          requiresHostApproval: true,
+          visibleSessionRequired: true,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          auditId: "audit-demo"
+        })
+      ).toThrow("Permission requires an explicit capability review");
+    }
   });
 });
 
