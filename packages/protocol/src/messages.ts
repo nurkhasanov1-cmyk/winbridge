@@ -13,6 +13,7 @@ import { hasSecretBearingProtocolIdentifierMetadata } from "./identifier-metadat
 import { deepFreeze } from "./immutable-snapshot.js";
 import { createJsonObjectSchema, stringifyJson, type JsonObject, type JsonValue } from "./json.js";
 import {
+  createPermissionListSchema,
   PairingCodeSchema,
   PeerIdSchema,
   PermissionSchema,
@@ -119,6 +120,17 @@ const ProtocolCapabilitySchema = z
 const SignalPayloadSchema = createJsonObjectSchema(
   "Signal payload must be JSON-compatible"
 );
+const RequestedPermissionsSchema = createPermissionListSchema({
+  allowEmpty: false,
+  duplicateMessage: "requestedPermissions must be unique",
+  emptyMessage: "requestedPermissions require at least one permission"
+});
+const GrantedPermissionsSchema = createPermissionListSchema({
+  duplicateMessage: "grantedPermissions must be unique"
+});
+const StatePermissionsSchema = createPermissionListSchema({
+  duplicateMessage: "permissions must be unique"
+});
 
 export const HelloMessageSchema = BaseMessageSchema.extend({
   type: z.literal("hello"),
@@ -142,9 +154,7 @@ export const HostConsentRequiredMessageSchema = BaseMessageSchema.extend({
   type: z.literal("host-consent-required"),
   viewerPeerId: PeerIdSchema,
   viewerDisplayName: DeviceDisplayNameSchema,
-  requestedPermissions: z.array(PermissionSchema).min(1).max(16)
-}).superRefine((message, context) => {
-  rejectDuplicatePermissions(message.requestedPermissions, context, "requestedPermissions");
+  requestedPermissions: RequestedPermissionsSchema
 });
 
 export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
@@ -152,11 +162,9 @@ export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
   hostPeerId: PeerIdSchema,
   viewerPeerId: PeerIdSchema,
   approved: z.boolean(),
-  grantedPermissions: z.array(PermissionSchema).max(16),
+  grantedPermissions: GrantedPermissionsSchema,
   reason: ProtocolReasonSchema.optional()
 }).superRefine((message, context) => {
-  rejectDuplicatePermissions(message.grantedPermissions, context, "grantedPermissions");
-
   if (message.approved && message.grantedPermissions.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -185,10 +193,8 @@ export const HostConsentDecisionMessageSchema = BaseMessageSchema.extend({
 export const SessionAuthorizationRequestMessageSchema = BaseMessageSchema.extend({
   type: z.literal("session-authorization-request"),
   viewerPeerId: PeerIdSchema,
-  requestedPermissions: z.array(PermissionSchema).min(1).max(16),
+  requestedPermissions: RequestedPermissionsSchema,
   reason: ProtocolReasonSchema.optional()
-}).superRefine((message, context) => {
-  rejectDuplicatePermissions(message.requestedPermissions, context, "requestedPermissions");
 });
 
 export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.extend({
@@ -197,12 +203,10 @@ export const SessionAuthorizationDecisionMessageSchema = BaseMessageSchema.exten
   hostPeerId: PeerIdSchema,
   viewerPeerId: PeerIdSchema,
   decision: z.enum(["approved", "denied"]),
-  grantedPermissions: z.array(PermissionSchema).max(16),
+  grantedPermissions: GrantedPermissionsSchema,
   expiresAt: z.string().datetime().optional(),
   reason: ProtocolReasonSchema.optional()
 }).superRefine((message, context) => {
-  rejectDuplicatePermissions(message.grantedPermissions, context, "grantedPermissions");
-
   if (message.decision === "approved" && !message.expiresAt) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -259,12 +263,10 @@ export const SessionAuthorizationStateMessageSchema = BaseMessageSchema.extend({
   actorPeerId: PeerIdSchema,
   status: SessionAuthorizationStatusSchema,
   visibleToHost: z.boolean(),
-  permissions: z.array(PermissionSchema).max(16),
+  permissions: StatePermissionsSchema,
   expiresAt: z.string().datetime(),
   reason: ProtocolReasonSchema.optional()
 }).superRefine((message, context) => {
-  rejectDuplicatePermissions(message.permissions, context, "permissions");
-
   if ((message.status === "active" || message.status === "paused") && !message.visibleToHost) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -511,22 +513,6 @@ export function createMessageBase(sessionId: string) {
     sessionId,
     createdAt: new Date().toISOString()
   } as const;
-}
-
-function rejectDuplicatePermissions(
-  permissions: unknown[],
-  context: z.RefinementCtx,
-  path: "requestedPermissions" | "grantedPermissions" | "permissions"
-): void {
-  if (new Set(permissions).size === permissions.length) {
-    return;
-  }
-
-  context.addIssue({
-    code: z.ZodIssueCode.custom,
-    message: `${path} must be unique`,
-    path: [path]
-  });
 }
 
 function rejectDuplicateCapabilities(capabilities: unknown[], context: z.RefinementCtx): void {

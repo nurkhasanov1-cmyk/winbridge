@@ -34,31 +34,90 @@ const BasePermissionSchema = z.enum([
 ]);
 export type Permission = z.infer<typeof BasePermissionSchema>;
 
+const KNOWN_PERMISSIONS: ReadonlySet<Permission> = new Set(BasePermissionSchema.options);
 const UNAVAILABLE_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "clipboard:read",
   "clipboard:write",
   "file-transfer"
 ]);
 
-export const PermissionSchema = BasePermissionSchema.refine(
-  (permission) => !UNAVAILABLE_PERMISSIONS.has(permission),
-  "Permission requires an explicit capability review"
-);
+export const PermissionSchema = z
+  .string()
+  .superRefine((permission, context) => {
+    if (!isKnownPermission(permission)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Permission is not supported"
+      });
+      return;
+    }
 
-const SessionGrantPermissionsSchema = z
-  .array(PermissionSchema)
-  .min(1, "Session grant requires at least one permission")
-  .max(16)
-  .superRefine((permissions, context) => {
-    if (new Set(permissions).size === permissions.length) {
+    if (UNAVAILABLE_PERMISSIONS.has(permission)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Permission requires an explicit capability review"
+      });
+    }
+  })
+  .transform((permission): Permission => permission as Permission);
+
+export const MAX_PERMISSION_COUNT = 16;
+const BasePermissionListSchema = z.array(PermissionSchema).max(MAX_PERMISSION_COUNT);
+
+type PermissionListValidationOptions = {
+  allowEmpty?: boolean;
+  duplicateMessage: string;
+  emptyMessage?: string;
+};
+
+export function createPermissionListSchema(options: PermissionListValidationOptions) {
+  return BasePermissionListSchema.superRefine((permissions, context) => {
+    const issue = getPermissionListIssue(permissions, options);
+    if (!issue) {
       return;
     }
 
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Session grant permissions must be unique"
+      message: issue
     });
   });
+}
+
+export function parsePermissionList(input: unknown, options: PermissionListValidationOptions): Permission[] {
+  const parsed = BasePermissionListSchema.parse(input);
+  const issue = getPermissionListIssue(parsed, options);
+  if (issue) {
+    throw new Error(issue);
+  }
+
+  return parsed;
+}
+
+function getPermissionListIssue(
+  permissions: readonly Permission[],
+  options: PermissionListValidationOptions
+): string | undefined {
+  if (options.allowEmpty === false && permissions.length === 0) {
+    return options.emptyMessage ?? "Permission list requires at least one permission";
+  }
+
+  if (new Set(permissions).size !== permissions.length) {
+    return options.duplicateMessage;
+  }
+
+  return undefined;
+}
+
+function isKnownPermission(permission: string): permission is Permission {
+  return KNOWN_PERMISSIONS.has(permission as Permission);
+}
+
+const SessionGrantPermissionsSchema = createPermissionListSchema({
+  allowEmpty: false,
+  duplicateMessage: "Session grant permissions must be unique",
+  emptyMessage: "Session grant requires at least one permission"
+});
 
 export const SessionGrantSchema = z.object({
   sessionId: SessionGrantIdentifierSchema,

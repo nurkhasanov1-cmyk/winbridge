@@ -3,7 +3,15 @@ import { z } from "zod";
 import { hasSecretBearingAuditMetadata } from "./audit.js";
 import { hasSecretBearingProtocolIdentifierMetadata } from "./identifier-metadata.js";
 import { deepFreeze } from "./immutable-snapshot.js";
-import { PeerIdSchema, PermissionSchema, type Permission, ProtocolIdentifierSchema, SessionIdSchema } from "./session.js";
+import {
+  createPermissionListSchema,
+  parsePermissionList,
+  PeerIdSchema,
+  PermissionSchema,
+  type Permission,
+  ProtocolIdentifierSchema,
+  SessionIdSchema
+} from "./session.js";
 import { hasAsciiControlCharacter, hasUnsafeTextFormatControl } from "./text-safety.js";
 
 export const SessionAuthorizationStatusSchema = z.enum([
@@ -95,7 +103,9 @@ const SessionAuthorizationBaseSchema = z.object({
   hostPeerId: PeerIdSchema,
   viewerPeerId: PeerIdSchema,
   status: SessionAuthorizationStatusSchema,
-  permissions: z.array(PermissionSchema).max(16),
+  permissions: createPermissionListSchema({
+    duplicateMessage: "Session authorization permissions must be unique"
+  }),
   visibleToHost: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -112,14 +122,6 @@ const SessionAuthorizationBaseSchema = z.object({
 }).strict();
 export const SessionAuthorizationSchema = SessionAuthorizationBaseSchema.superRefine((authorization, ctx) => {
   validateTimestampOrder(authorization, ctx);
-
-  if (new Set(authorization.permissions).size !== authorization.permissions.length) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Session authorization permissions must be unique",
-      path: ["permissions"]
-    });
-  }
 
   if (grantBearingStatuses.has(authorization.status) && authorization.permissions.length === 0) {
     ctx.addIssue({
@@ -231,7 +233,7 @@ export function createPendingSessionAuthorization(input: {
   const now = input.now ?? new Date();
   const ttlMs = input.ttlMs ?? DEFAULT_AUTHORIZATION_TTL_MS;
   assertSafeAuthorizationTtl(ttlMs);
-  const requestedPermissions = parseUniquePermissions(input.requestedPermissions, {
+  const requestedPermissions = parsePermissionList(input.requestedPermissions, {
     allowEmpty: false,
     duplicateMessage: "Requested permissions must be unique",
     emptyMessage: "Session authorization requires at least one requested permission"
@@ -260,7 +262,7 @@ export function approveSessionAuthorization(
 ): SessionAuthorization {
   const now = input.now ?? new Date();
   const parsed = assertMutablePending(authorization, now);
-  const grantedPermissions = parseUniquePermissions(input.grantedPermissions, {
+  const grantedPermissions = parsePermissionList(input.grantedPermissions, {
     allowEmpty: false,
     duplicateMessage: "Granted permissions must be unique",
     emptyMessage: "Session authorization approval requires at least one granted permission"
@@ -534,27 +536,6 @@ function assertSafeAuthorizationTtl(ttlMs: number): void {
   if (!Number.isInteger(ttlMs) || ttlMs < 1 || ttlMs > MAX_AUTHORIZATION_TTL_MS) {
     throw new Error(`Authorization TTL must be an integer from 1 through ${MAX_AUTHORIZATION_TTL_MS}`);
   }
-}
-
-function parseUniquePermissions(
-  permissions: Permission[],
-  messages: {
-    allowEmpty: boolean;
-    duplicateMessage: string;
-    emptyMessage: string;
-  }
-): Permission[] {
-  const parsed = z.array(PermissionSchema).max(16).parse(permissions);
-
-  if (!messages.allowEmpty && parsed.length === 0) {
-    throw new Error(messages.emptyMessage);
-  }
-
-  if (new Set(parsed).size !== parsed.length) {
-    throw new Error(messages.duplicateMessage);
-  }
-
-  return parsed;
 }
 
 function requireLifecycleTimestamp(
