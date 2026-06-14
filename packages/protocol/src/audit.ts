@@ -207,13 +207,15 @@ const sensitiveProtocolIdentifierMarkers = [
 ] as const;
 
 export function createAuditRecord(input: AuditRecordInput): AuditRecord {
-  return AuditRecordSchema.parse({
-    ...input,
-    eventId: input.eventId ?? `audit_${randomUUID()}`,
-    timestamp: input.timestamp ?? new Date().toISOString(),
-    reason: redactAuditReason(input.reason),
-    detail: redactAuditDetail(input.detail ?? {})
-  });
+  return deepFreeze(
+    AuditRecordSchema.parse({
+      ...input,
+      eventId: input.eventId ?? `audit_${randomUUID()}`,
+      timestamp: input.timestamp ?? new Date().toISOString(),
+      reason: redactAuditReason(input.reason),
+      detail: redactAuditDetail(input.detail ?? {})
+    })
+  );
 }
 
 export function redactAuditDetail(detail: Record<string, unknown>): AuditDetail {
@@ -260,6 +262,18 @@ function redactAuditReason(reason: string | undefined): string | undefined {
   }
 
   return isSensitiveAuditReason(reason) ? REDACTED_AUDIT_VALUE : reason;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+    return value;
+  }
+
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+
+  return Object.freeze(value) as T;
 }
 
 export function hasSecretBearingAuditMetadata(

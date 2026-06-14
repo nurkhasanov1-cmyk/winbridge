@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createAuditRecord, redactAuditDetail, type AuditDetail } from "./audit.js";
+import { createAuditRecord, redactAuditDetail, type AuditDetail, type AuditRecord } from "./audit.js";
+
+function expectImmutableAuditRecordSnapshot(record: AuditRecord): void {
+  expect(Object.isFrozen(record)).toBe(true);
+  expect(Object.isFrozen(record.actor)).toBe(true);
+  expect(Object.isFrozen(record.detail)).toBe(true);
+}
 
 describe("audit records", () => {
   it("creates schema-valid structured audit records", () => {
@@ -13,6 +19,126 @@ describe("audit records", () => {
 
     expect(record.action).toBe("relay.peer.join.accepted");
     expect(record.detail).toEqual({ role: "viewer" });
+  });
+
+  it("returns immutable audit record snapshots", () => {
+    const record = createAuditRecord({
+      actor: { type: "host", id: "host-1", deviceId: "device-host-1" },
+      action: "agent-shell.authorization.active",
+      outcome: "accepted",
+      sessionId: "session-demo",
+      target: {
+        type: "authorization",
+        id: "authz-demo"
+      },
+      detail: {
+        authorizationId: "authz-demo",
+        nested: {
+          safe: "kept"
+        },
+        attempts: [{ remaining: 1 }]
+      }
+    });
+
+    expectImmutableAuditRecordSnapshot(record);
+    expect(Object.isFrozen(record.target)).toBe(true);
+    expect(Object.isFrozen(record.detail.nested as object)).toBe(true);
+    expect(Object.isFrozen(record.detail.attempts as object)).toBe(true);
+    expect(Object.isFrozen((record.detail.attempts as Array<Record<string, unknown>>)[0])).toBe(true);
+    expect(() => {
+      (record as unknown as { action: string }).action = "tampered";
+    }).toThrow(TypeError);
+    expect(() => {
+      record.actor.id = "viewer-1";
+    }).toThrow(TypeError);
+    expect(() => {
+      record.target!.id = "other-authz";
+    }).toThrow(TypeError);
+    expect(() => {
+      (record.detail.nested as Record<string, unknown>).safe = "tampered";
+    }).toThrow(TypeError);
+  });
+
+  it("prevents restoring redacted audit reason and detail metadata", () => {
+    const record = createAuditRecord({
+      actor: { type: "relay", id: "relay-dev" },
+      action: "relay.peer.join.denied",
+      outcome: "denied",
+      reason: "token raw-token",
+      detail: {
+        token: "raw-token",
+        nested: {
+          password: "raw-password",
+          safe: "kept"
+        }
+      }
+    });
+
+    expectImmutableAuditRecordSnapshot(record);
+    expect(record.reason).toBe("[REDACTED]");
+    expect(record.detail).toMatchObject({
+      token: "[REDACTED]",
+      nested: {
+        password: "[REDACTED]",
+        safe: "kept"
+      }
+    });
+
+    const nested = record.detail.nested as Record<string, unknown>;
+    expect(Object.isFrozen(nested)).toBe(true);
+    expect(() => {
+      record.reason = "token raw-token";
+    }).toThrow(TypeError);
+    expect(() => {
+      record.detail.token = "raw-token";
+    }).toThrow(TypeError);
+    expect(() => {
+      nested.password = "raw-password";
+    }).toThrow(TypeError);
+    expect(JSON.stringify(record)).not.toContain("raw-token");
+    expect(JSON.stringify(record)).not.toContain("raw-password");
+  });
+
+  it("serializes immutable audit records with the same redacted JSON shape", () => {
+    const record = createAuditRecord({
+      eventId: "audit-demo",
+      timestamp: "2026-06-14T00:00:00.000Z",
+      actor: { type: "host", id: "host-1", deviceId: "device-host-1" },
+      action: "agent-shell.authorization.active",
+      outcome: "accepted",
+      sessionId: "session-demo",
+      target: {
+        type: "authorization",
+        id: "authz-demo"
+      },
+      detail: {
+        authorizationId: "authz-demo",
+        token: "raw-token",
+        nested: {
+          safe: true
+        }
+      }
+    });
+
+    expect(JSON.parse(JSON.stringify(record))).toStrictEqual({
+      eventId: "audit-demo",
+      timestamp: "2026-06-14T00:00:00.000Z",
+      actor: { type: "host", id: "host-1", deviceId: "device-host-1" },
+      action: "agent-shell.authorization.active",
+      outcome: "accepted",
+      sessionId: "session-demo",
+      target: {
+        type: "authorization",
+        id: "authz-demo"
+      },
+      detail: {
+        authorizationId: "authz-demo",
+        token: "[REDACTED]",
+        nested: {
+          safe: true
+        }
+      }
+    });
   });
 
   it("allows device ids only for participant audit actors", () => {
