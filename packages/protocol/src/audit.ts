@@ -6,10 +6,15 @@ import { ProtocolIdentifierSchema, SessionIdSchema } from "./session.js";
 export const AuditOutcomeSchema = z.enum(["accepted", "denied", "failed"]);
 export type AuditOutcome = z.infer<typeof AuditOutcomeSchema>;
 
+const AuditActorDeviceIdSchema = ProtocolIdentifierSchema.min(8).refine(
+  (deviceId) => !hasSecretBearingAuditActorDeviceIdMetadata(deviceId),
+  "Audit actor deviceId must not contain sensitive metadata"
+);
+
 export const AuditActorSchema = z.object({
   type: z.enum(["system", "relay", "host", "viewer"]),
   id: ProtocolIdentifierSchema,
-  deviceId: ProtocolIdentifierSchema.min(8).optional()
+  deviceId: AuditActorDeviceIdSchema.optional()
 }).strict().superRefine((actor, context) => {
   if ((actor.type === "system" || actor.type === "relay") && actor.deviceId !== undefined) {
     context.addIssue({
@@ -205,6 +210,33 @@ const sensitiveProtocolIdentifierMarkers = [
   "authheader",
   "proxyauthorization"
 ] as const;
+const sensitiveAuditActorDeviceIdMarkers = [
+  ...sensitiveProtocolIdentifierMarkers,
+  "protocolpayload",
+  "keystroke",
+  "keylog",
+  "keylogger",
+  "screenshot",
+  "screendata",
+  "screencontent",
+  "clipboard",
+  "clipboardtext",
+  "clipboardcontent",
+  "clipboardcontents",
+  "filecontent",
+  "filedata",
+  "filebytes",
+  "filetransfer",
+  "filetransfercontent",
+  "filetransferdata",
+  "filetransferbytes",
+  "diagnostic",
+  "diagnostics",
+  "diagnosticcontent",
+  "diagnosticdump",
+  "diagnosticscontent",
+  "diagnosticsdump"
+] as const;
 
 export function createAuditRecord(input: AuditRecordInput): AuditRecord {
   return deepFreeze(
@@ -299,6 +331,12 @@ export function hasSecretBearingProtocolIdentifierMetadata(value: string): boole
   const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   return sensitiveProtocolIdentifierMarkers.some((marker) => normalized.includes(marker));
+}
+
+function hasSecretBearingAuditActorDeviceIdMetadata(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  return sensitiveAuditActorDeviceIdMarkers.some((marker) => normalized.includes(marker));
 }
 
 function isSensitiveAuditReason(reason: string): boolean {

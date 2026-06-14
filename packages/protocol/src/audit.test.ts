@@ -177,6 +177,55 @@ describe("audit records", () => {
     }
   });
 
+  it("rejects secret-bearing participant actor device ids without exposing raw text", () => {
+    const secretBearingDeviceIds = [
+      "token-raw-device-secret",
+      "credential_raw_device_secret",
+      "cookie.raw.device.secret",
+      "ssh-key-raw-device-secret",
+      "protocol-payload-raw",
+      "keystroke-raw-input",
+      "screenshot-raw-frame",
+      "screen-content-raw",
+      "clipboard-content-raw",
+      "file-transfer-bytes-raw",
+      "diagnostic-dump-raw"
+    ] as const;
+
+    for (const actorType of ["host", "viewer"] as const) {
+      for (const deviceId of secretBearingDeviceIds) {
+        let thrown: unknown;
+
+        try {
+          createAuditRecord({
+            actor: { type: actorType, id: `${actorType}-1`, deviceId },
+            action: "agent-shell.authorization.active",
+            outcome: "accepted",
+            sessionId: "session-demo"
+          });
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown, `${actorType}:${deviceId}`).toBeInstanceOf(Error);
+        expect((thrown as Error).message, `${actorType}:${deviceId}`).toContain("deviceId");
+        expect((thrown as Error).message, `${actorType}:${deviceId}`).toContain(
+          "sensitive metadata"
+        );
+        expect((thrown as Error).message, `${actorType}:${deviceId}`).not.toContain(deviceId);
+        expect((thrown as Error).message, `${actorType}:${deviceId}`).not.toContain(
+          "raw-device-secret"
+        );
+        expect((thrown as Error).message, `${actorType}:${deviceId}`).not.toContain(
+          "clipboard-content-raw"
+        );
+        expect((thrown as Error).message, `${actorType}:${deviceId}`).not.toContain(
+          "diagnostic-dump-raw"
+        );
+      }
+    }
+  });
+
   it("accepts JSON-compatible audit detail values", () => {
     const record = createAuditRecord({
       actor: { type: "relay", id: "relay-dev" },
