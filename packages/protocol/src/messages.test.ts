@@ -6,6 +6,7 @@ import {
 } from "./messages.js";
 import type { AuditDetail } from "./audit.js";
 import type { JsonObject } from "./json.js";
+import type { ProtocolEnvelope } from "./messages.js";
 import { assertConsentBoundGrant } from "./session.js";
 import type { SessionGrant } from "./session.js";
 
@@ -34,6 +35,11 @@ function expectImmutableSessionGrantSnapshot(grant: SessionGrant): void {
   expect(Object.isFrozen(grant)).toBe(true);
   expect(Object.isFrozen(grant.permissions)).toBe(true);
 }
+
+function expectImmutableProtocolEnvelope(envelope: ProtocolEnvelope): void {
+  expect(Object.isFrozen(envelope)).toBe(true);
+}
+
 const secretBearingDisplayNames = [
   "Authorization: Bearer raw-display-token",
   "credential: raw-display-credential",
@@ -54,6 +60,28 @@ describe("protocol envelopes", () => {
     });
 
     expect(parsed.type).toBe("hello");
+  });
+
+  it("returns immutable parsed protocol envelope snapshots", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "hello",
+      peerId: "host-1",
+      role: "host",
+      displayName: "Host",
+      capabilities: ["session:visible"]
+    });
+
+    expectImmutableProtocolEnvelope(parsed);
+    if (parsed.type !== "hello") {
+      throw new Error("Expected hello message");
+    }
+
+    expect(Object.isFrozen(parsed.capabilities)).toBe(true);
+    expect(() => parsed.capabilities.push("screen:stream")).toThrow(TypeError);
+    expect(() => {
+      parsed.peerId = "viewer-1";
+    }).toThrow(TypeError);
   });
 
   it("rejects unknown protocol messages", () => {
@@ -482,6 +510,57 @@ describe("protocol envelopes", () => {
         mirroredMetadata: {
           relay: "local-dev"
         }
+      }
+    });
+  });
+
+  it("returns immutable signal payload snapshots without changing encoded wire shape", () => {
+    const message = {
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        authorizationId: "authz-demo",
+        kind: "offer",
+        metadata: {
+          relay: "local-dev"
+        },
+        candidates: [{ candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host" }]
+      }
+    } as const;
+    const parsed = parseProtocolEnvelope(message);
+
+    expectImmutableProtocolEnvelope(parsed);
+    if (parsed.type !== "signal") {
+      throw new Error("Expected signal message");
+    }
+
+    const metadata = parsed.payload.metadata as JsonObject;
+    const candidates = parsed.payload.candidates as JsonObject[];
+    expect(Object.isFrozen(parsed.payload)).toBe(true);
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(candidates)).toBe(true);
+    expect(Object.isFrozen(candidates[0])).toBe(true);
+    expect(() => {
+      parsed.payload.kind = "answer";
+    }).toThrow(TypeError);
+    expect(() => {
+      metadata.relay = "changed";
+    }).toThrow(TypeError);
+    expect(() => candidates.push({ candidate: "candidate:2 1 udp 1 127.0.0.1 9 typ host" })).toThrow(
+      TypeError
+    );
+
+    expect(JSON.parse(encodeProtocolEnvelope(parsed))).toStrictEqual({
+      ...message,
+      payload: {
+        authorizationId: "authz-demo",
+        kind: "offer",
+        metadata: {
+          relay: "local-dev"
+        },
+        candidates: [{ candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host" }]
       }
     });
   });
@@ -1718,6 +1797,36 @@ describe("protocol envelopes", () => {
     expect(parsed.type).toBe("session-authorization-state");
   });
 
+  it("returns immutable authorization envelopes and permission arrays", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "session-authorization-state",
+      authorizationId: "authz-demo",
+      actorPeerId: "host-1",
+      status: "active",
+      visibleToHost: true,
+      permissions: ["screen:view"],
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+
+    expectImmutableProtocolEnvelope(parsed);
+    if (parsed.type !== "session-authorization-state") {
+      throw new Error("Expected session authorization state message");
+    }
+
+    expect(Object.isFrozen(parsed.permissions)).toBe(true);
+    expect(() => parsed.permissions.push("input:pointer")).toThrow(TypeError);
+    expect(() => {
+      parsed.status = "paused";
+    }).toThrow(TypeError);
+    expect(() => {
+      parsed.visibleToHost = false;
+    }).toThrow(TypeError);
+    expect(() => {
+      parsed.actorPeerId = "viewer-1";
+    }).toThrow(TypeError);
+  });
+
   it("rejects grant-bearing session authorization state updates with stale expiration", () => {
     const createdAt = "2026-06-13T09:00:00.000Z";
 
@@ -2659,6 +2768,68 @@ describe("protocol envelopes", () => {
     expect(JSON.stringify(parsed)).not.toContain("clipboard data");
     expect(JSON.stringify(parsed)).not.toContain("file data");
     expect(JSON.stringify(parsed)).not.toContain("diagnostic data");
+  });
+
+  it("returns immutable redacted audit detail snapshots", () => {
+    const parsed = parseProtocolEnvelope({
+      ...createMessageBase("session-demo"),
+      type: "audit-event",
+      eventId: "audit-demo",
+      actorPeerId: "host-1",
+      action: "agent-shell.test",
+      outcome: "accepted",
+      detail: {
+        token: "raw-token",
+        nested: {
+          credential: "nested-credential",
+          safe: "kept"
+        },
+        attempts: [
+          {
+            password: "nested-password",
+            remaining: 1
+          }
+        ]
+      }
+    });
+
+    expectImmutableProtocolEnvelope(parsed);
+    if (parsed.type !== "audit-event") {
+      throw new Error("Expected audit event message");
+    }
+
+    expect(parsed.detail).toMatchObject({
+      token: "[REDACTED]",
+      nested: {
+        credential: "[REDACTED]",
+        safe: "kept"
+      },
+      attempts: [
+        {
+          password: "[REDACTED]",
+          remaining: 1
+        }
+      ]
+    });
+
+    const nested = parsed.detail.nested as JsonObject;
+    const attempts = parsed.detail.attempts as JsonObject[];
+    expect(Object.isFrozen(parsed.detail)).toBe(true);
+    expect(Object.isFrozen(nested)).toBe(true);
+    expect(Object.isFrozen(attempts)).toBe(true);
+    expect(Object.isFrozen(attempts[0])).toBe(true);
+    expect(() => {
+      parsed.detail.token = "raw-token";
+    }).toThrow(TypeError);
+    expect(() => {
+      nested.credential = "nested-credential";
+    }).toThrow(TypeError);
+    expect(() => {
+      attempts[0].password = "nested-password";
+    }).toThrow(TypeError);
+    expect(JSON.stringify(parsed)).not.toContain("raw-token");
+    expect(JSON.stringify(parsed)).not.toContain("nested-credential");
+    expect(JSON.stringify(parsed)).not.toContain("nested-password");
   });
 
   it("redacts nested sensitive audit-event detail fields in objects and arrays", () => {

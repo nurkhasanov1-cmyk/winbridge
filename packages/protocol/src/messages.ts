@@ -470,7 +470,7 @@ export const ProtocolEnvelopeSchema = z.union([
 export type ProtocolEnvelope = z.infer<typeof ProtocolEnvelopeSchema>;
 
 export function parseProtocolEnvelope(input: unknown): ProtocolEnvelope {
-  return ProtocolEnvelopeSchema.parse(input);
+  return deepFreeze(ProtocolEnvelopeSchema.parse(input));
 }
 
 export function decodeProtocolEnvelope(raw: string): ProtocolEnvelope {
@@ -488,6 +488,18 @@ export function createMessageBase(sessionId: string) {
     sessionId,
     createdAt: new Date().toISOString()
   } as const;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+    return value;
+  }
+
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+
+  return Object.freeze(value) as T;
 }
 
 function rejectDuplicatePermissions(
