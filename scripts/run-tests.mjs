@@ -4,13 +4,8 @@ import { spawnSync } from "node:child_process";
 
 const roots = ["apps", "packages"];
 const vitestBin = join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
-const isWindows = process.platform === "win32";
-const vitestCommand = isWindows
-  ? process.env.ComSpec ?? "cmd.exe"
-  : process.execPath;
-const vitestBaseArgs = isWindows
-  ? ["/d", "/s", "/c", join(process.cwd(), "node_modules", ".bin", "vitest.cmd")]
-  : [vitestBin];
+const vitestCommand = process.execPath;
+const vitestBaseArgs = [vitestBin];
 const testFiles = roots.flatMap((root) => findTestFiles(root)).sort();
 
 if (testFiles.length === 0) {
