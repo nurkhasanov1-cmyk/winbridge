@@ -37,7 +37,7 @@ export type AgentShellArgs = {
   hostControlPrompt: boolean;
   hostStatusAfterMs?: number;
   viewerControlPrompt: boolean;
-  hostSignalProbeAck: boolean;
+  hostSignalProbeAck?: boolean;
   hostConsentTimeoutMs?: number;
   visibleToHost: boolean;
   authorizationTtlMs?: number;
@@ -510,7 +510,11 @@ function parseViewerControlPrompt(
   return enabled;
 }
 
-function parseHostSignalProbeAck(role: SessionRole, raw: string | undefined): boolean {
+function parseHostSignalProbeAck(role: SessionRole, raw: string | undefined): boolean | undefined {
+  if (raw === undefined && role !== "host") {
+    return undefined;
+  }
+
   const enabled = parseBooleanFlag(raw, false);
 
   if (raw !== undefined && role !== "host") {

@@ -54,9 +54,9 @@ describe("agent shell arguments", () => {
       hostControlPrompt: false,
       hostStatusAfterMs: undefined,
       viewerControlPrompt: false,
-      hostSignalProbeAck: false,
       visibleToHost: false
     });
+    expect(args.hostSignalProbeAck).toBeUndefined();
   });
 
   it("parses explicit visible session boolean values", () => {
@@ -128,6 +128,7 @@ describe("agent shell arguments", () => {
   });
 
   it("parses host signal probe acknowledgement mode for host runtimes", () => {
+    expect(parseArgs(["host"], {}, 42).hostSignalProbeAck).toBe(false);
     expect(parseArgs(["host", "--host-signal-probe-ack", "true"], {}, 42).hostSignalProbeAck).toBe(true);
     expect(parseArgs(["host", "--host-signal-probe-ack", "false"], {}, 42).hostSignalProbeAck).toBe(false);
   });

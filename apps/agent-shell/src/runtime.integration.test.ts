@@ -14,6 +14,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { createRelayRuntime, type RelayRuntime } from "../../relay/src/server.js";
+import { parseArgs } from "./args.js";
 import {
   createAgentShellRuntime,
   formatAgentShellErrorLog,
@@ -129,6 +130,22 @@ afterEach(async () => {
 });
 
 describe("agent shell consent workflow", () => {
+  it("constructs viewer runtime from parsed default CLI args without host acknowledgement state", () => {
+    const args = parseArgs(
+      ["viewer", "--relay", "ws://127.0.0.1:8787", "--peer", "viewer-1"],
+      {},
+      42
+    );
+
+    expect(args.hostSignalProbeAck).toBeUndefined();
+    expect(() =>
+      createAgentShellRuntime({
+        ...args,
+        logger: silentLogger
+      })
+    ).not.toThrow();
+  });
+
   it("rejects malformed runtime host decisions before relay startup", () => {
     expect(() =>
       createAgentShellRuntime(createRuntimeOptions({
