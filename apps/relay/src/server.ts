@@ -292,17 +292,19 @@ export function createRelayRuntime(options: RelayRuntimeOptions = {}): RelayRunt
         const recipientPeers = rooms.peers(registeredPeer.sessionId, registeredPeer.peerId);
         const recipient = assertSingleRecipient(recipientPeers);
         assertEnvelopeTargetsRecipient(envelope, recipient);
+        const forwardAuditDetail = acceptedForwardAuditDetail(envelope, recipient);
 
-        for (const peer of recipientPeers) {
-          peer.send(encodeProtocolEnvelope(envelope));
-        }
         writeRelayAudit(auditSink, {
           action: "relay.message.forwarded",
           outcome: "accepted",
           sessionId: registeredPeer.sessionId,
           peerId: registeredPeer.peerId,
-          detail: acceptedForwardAuditDetail(envelope, recipient)
+          detail: forwardAuditDetail
         });
+
+        for (const peer of recipientPeers) {
+          peer.send(encodeProtocolEnvelope(envelope));
+        }
       } catch (error) {
         const reason = safeRelayRejectionReason(error);
         const decision = invalidMessageLimiter.consume(registeredPeer?.peerId ?? remoteKey);

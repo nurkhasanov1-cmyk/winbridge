@@ -49,6 +49,16 @@ class ClosingJoinRejectionRoomRegistry extends RoomRegistry {
   }
 }
 
+class ForwardAuditFailureSink extends MemoryAuditSink {
+  override write(input: Parameters<MemoryAuditSink["write"]>[0]): AuditRecord {
+    if (input.action === "relay.message.forwarded") {
+      throw new Error("Forward audit unavailable private-forward-audit-marker");
+    }
+
+    return super.write(input);
+  }
+}
+
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((runtime) => runtime.stop()));
 });
@@ -648,6 +658,73 @@ describe("relay runtime integration", () => {
     expect(JSON.stringify(forwarded)).not.toContain(privateMarker);
     expect(JSON.stringify(forwarded)).not.toContain("raw-forwarded-signal-sdp");
     expect(JSON.stringify(forwarded)).not.toContain("raw-forwarded-signal-candidate");
+  });
+
+  it("blocks recipient delivery when accepted forward audit fails", async () => {
+    const auditSink = new ForwardAuditFailureSink();
+    const runtime = await startRuntime({ auditSink });
+    const { host, viewer } = await joinPairedSession(runtime);
+    const privateMarker = "unaudited-forward-private-marker";
+    const signal = {
+      ...createMessageBase("session-demo"),
+      type: "signal",
+      fromPeerId: "host-1",
+      toPeerId: "viewer-1",
+      payload: {
+        authorizationId: "authz-forward-audit-failure",
+        kind: "offer",
+        safeMarker: privateMarker
+      }
+    } as const;
+    const noForwardedSignal = expectNoProtocolMessage(
+      viewer,
+      (message) => message.type === "signal" && message.messageId === signal.messageId
+    );
+
+    host.send(encodeProtocolEnvelope(signal));
+
+    const relayError = await waitForJsonMessage(host, (message) => message.type === "relay-error");
+    await noForwardedSignal;
+
+    expect(relayError).toEqual({
+      type: "relay-error",
+      reason: "Invalid relay message"
+    });
+    expect(
+      auditSink.records().some(
+        (record) =>
+          record.action === "relay.message.forwarded" &&
+          record.detail?.messageId === signal.messageId
+      )
+    ).toBe(false);
+
+    const rejected = await waitForAuditRecord(
+      auditSink,
+      (record) =>
+        record.action === "relay.message.rejected" &&
+        record.actor.id === "development-relay:host-1"
+    );
+    expect(rejected).toMatchObject({
+      action: "relay.message.rejected",
+      outcome: "failed",
+      reason: "Invalid relay message",
+      sessionId: "session-demo",
+      detail: {
+        registered: true,
+        rateLimit: {
+          allowed: true,
+          limit: 5,
+          remaining: 4
+        }
+      }
+    });
+
+    const serialized = JSON.stringify([relayError, rejected, auditSink.records()]);
+    expect(serialized).not.toContain(privateMarker);
+    expect(serialized).not.toContain("authz-forward-audit-failure");
+    expect(serialized).not.toContain("Forward audit unavailable");
+    expect(serialized).not.toContain("private-forward-audit-marker");
+    expect(serialized).not.toContain("123-456");
   });
 
   it("redacts secret-bearing recipient peer ids in forwarded audit metadata", async () => {
