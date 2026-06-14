@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import {
-  hasSecretBearingAuditMetadata,
-  hasSecretBearingProtocolIdentifierMetadata
-} from "./audit.js";
+import { hasSecretBearingAuditMetadata } from "./audit.js";
+import { hasSecretBearingProtocolIdentifierMetadata } from "./identifier-metadata.js";
 import { PeerIdSchema, PermissionSchema, type Permission, ProtocolIdentifierSchema, SessionIdSchema } from "./session.js";
 
 export const SessionAuthorizationStatusSchema = z.enum([

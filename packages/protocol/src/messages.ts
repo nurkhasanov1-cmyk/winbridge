@@ -5,11 +5,11 @@ import {
   AuditDetailSchema,
   AuditOutcomeSchema,
   hasSecretBearingAuditMetadata,
-  hasSecretBearingProtocolIdentifierMetadata,
   redactAuditDetail
 } from "./audit.js";
 import { AuthorizationIdSchema, SessionAuthorizationStatusSchema } from "./authorization.js";
 import { DeviceDisplayNameSchema, DeviceIdentitySchema } from "./identity.js";
+import { hasSecretBearingProtocolIdentifierMetadata } from "./identifier-metadata.js";
 import { createJsonObjectSchema, stringifyJson, type JsonObject, type JsonValue } from "./json.js";
 import {
   PairingCodeSchema,

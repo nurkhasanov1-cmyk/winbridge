@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  hasSecretBearingProtocolIdentifierMetadata,
+  SECRET_BEARING_PROTOCOL_IDENTIFIER_MARKERS
+} from "./identifier-metadata.js";
 import { createJsonObjectSchema, type JsonObject, type JsonValue } from "./json.js";
 import { ProtocolIdentifierSchema, SessionIdSchema } from "./session.js";
+
+export { hasSecretBearingProtocolIdentifierMetadata } from "./identifier-metadata.js";
 
 export const AuditOutcomeSchema = z.enum(["accepted", "denied", "failed"]);
 export type AuditOutcome = z.infer<typeof AuditOutcomeSchema>;
@@ -205,25 +211,8 @@ const sensitiveReasonCredentialPattern = /\b(?:bearer|basic)\s+[a-z0-9._~+/=-]+/
 const sensitiveReasonPrivateKeyPattern = /-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
 const sensitiveMetadataAssignmentPattern =
   /(?:^|[\s,.;()[\]{}])([A-Za-z][A-Za-z0-9 _-]{0,80}?)(?::|=|\s+)\s*\S+/g;
-const sensitiveProtocolIdentifierMarkers = [
-  "token",
-  "credential",
-  "password",
-  "passphrase",
-  "secret",
-  "pairingcode",
-  "apikey",
-  "accesskey",
-  "cookie",
-  "privatekey",
-  "sshkey",
-  "authorization",
-  "authorizationheader",
-  "authheader",
-  "proxyauthorization"
-] as const;
 const sensitiveAuditActorDeviceIdMarkers = [
-  ...sensitiveProtocolIdentifierMarkers,
+  ...SECRET_BEARING_PROTOCOL_IDENTIFIER_MARKERS,
   "protocolpayload",
   "keystroke",
   "keylog",
@@ -337,12 +326,6 @@ export function hasSecretBearingAuditMetadata(
     sensitiveReasonPrivateKeyPattern.test(value) ||
     (includeKeyAssignments && hasSensitiveAuditMetadataAssignment(value))
   );
-}
-
-export function hasSecretBearingProtocolIdentifierMetadata(value: string): boolean {
-  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-  return sensitiveProtocolIdentifierMarkers.some((marker) => normalized.includes(marker));
 }
 
 function hasSecretBearingAuditActorDeviceIdMetadata(value: string): boolean {

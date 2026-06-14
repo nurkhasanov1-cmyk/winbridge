@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { hasSecretBearingProtocolIdentifierMetadata } from "./identifier-metadata.js";
 
 export const SessionRoleSchema = z.enum(["host", "viewer"]);
 export type SessionRole = z.infer<typeof SessionRoleSchema>;
@@ -18,27 +19,9 @@ export const ProtocolIdentifierSchema = z
 export const SessionIdSchema = ProtocolIdentifierSchema;
 export const PeerIdSchema = ProtocolIdentifierSchema;
 const SessionGrantIdentifierSchema = ProtocolIdentifierSchema.refine(
-  (identifier) => !hasSecretBearingSessionGrantIdentifierMetadata(identifier),
+  (identifier) => !hasSecretBearingProtocolIdentifierMetadata(identifier),
   "Session grant identifier must not contain sensitive metadata"
 );
-
-const sensitiveSessionGrantIdentifierMarkers = [
-  "token",
-  "credential",
-  "password",
-  "passphrase",
-  "secret",
-  "pairingcode",
-  "apikey",
-  "accesskey",
-  "cookie",
-  "privatekey",
-  "sshkey",
-  "authorization",
-  "authorizationheader",
-  "authheader",
-  "proxyauthorization"
-] as const;
 
 const BasePermissionSchema = z.enum([
   "screen:view",
@@ -124,10 +107,4 @@ function deepFreeze<T>(value: T): T {
   }
 
   return Object.freeze(value) as T;
-}
-
-function hasSecretBearingSessionGrantIdentifierMetadata(value: string): boolean {
-  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-  return sensitiveSessionGrantIdentifierMarkers.some((marker) => normalized.includes(marker));
 }
